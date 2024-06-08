@@ -1,0 +1,6 @@
+{
+  "metrics_columns": [
+    "reward"
+  ],
+  "log_format_version": "1.1"
+}

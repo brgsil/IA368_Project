@@ -1,0 +1,7 @@
+block_num	exp_num	worker_id	block_type	block_subtype	task_name	task_params	exp_status	timestamp	episode_step_count	reward
+6	18	worker-default	test	wake	RoadRunner_Default	{}	complete	20240608T103552.695975	90	0.0
+6	19	worker-default	test	wake	RoadRunner_Default	{}	complete	20240608T103552.769333	152	0.0
+6	20	worker-default	test	wake	Boxing_Default	{}	complete	20240608T103553.912055	1787	0.0
+6	21	worker-default	test	wake	Boxing_Default	{}	complete	20240608T103554.856815	1787	0.0
+6	22	worker-default	test	wake	Jamesbond_Default	{}	complete	20240608T103555.220719	510	50.0
+6	23	worker-default	test	wake	Jamesbond_Default	{}	complete	20240608T103555.395345	506	0.0
