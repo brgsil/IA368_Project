@@ -54,14 +54,6 @@ class Qnet(nn.Module):
         x = self.fc2(x)
         return x
 
-    def sample_action(self, obs, epsilon):
-        out = self.forward(obs)
-        coin = random.random()
-        if coin < epsilon:
-            return random.randint(0, action_space)
-        else:
-            return out.argmax().item()
-
 
 class DQN:
     def __init__(self, lr=0.00025, gamma=0.99, buffer=200_000, batch_size=32, action_space=18, epsilon_start=1.0, epsilon_end=0.1, epsilon_delta=100):
@@ -79,12 +71,19 @@ class DQN:
             epsilon_end,
             epsilon_start - 1.0 * step * (epsilon_start - epsilon_end) / epsilon_delta)
         self.step_count = 0
+        self.action_space = action_space
 
+        self.gamma = gamma
         self.optimizer = optim.RMSprop(self.q_target.parameters(), lr=lr)
 
     def sample_action(self, obs):
         self.step_count += 1
-        return self.q_net.sample_action(obs, self.epsilon(self.step_count))
+        out = self.q_net(obs)
+        coin = random.random()
+        if coin < self.epsilon(self.step_count):
+            return random.randint(0, self.action_space)
+        else:
+            return out.argmax().item()
 
     def receive_transition(self, obs):
         self.replay.put(obs)
@@ -94,7 +93,7 @@ class DQN:
 
         with torch.no_grad():
             max_q_prime = self.q_target(s_prime).max(1)[0].unsqueeze(1)
-            target = r + gamma * max_q_prime * done_mask
+            target = r + self.gamma * max_q_prime * done_mask
 
         q_out = self.q_net(s)
         q_a = q_out.gather(1, a)
