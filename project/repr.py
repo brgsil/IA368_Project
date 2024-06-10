@@ -49,6 +49,18 @@ class RePR:
         else:
             self.train_gan()
 
+    def set_mode(self, mode):
+        if not mode == self.mode:
+            if mode == 'stm':
+                self.stm_dqn = DQN()
+            if mode == 'ltm':
+                self.gan = self.new_gan
+                self.prev_ltm_net = Qnet()
+                self.prev_ltm_net.load_state_dict(self.ltm_net.state_dict())
+                self.ltm_replay = ReplayBuffer(size=200_000)
+            if mode == 'gan':
+                self.new_gan = GAN()
+
     def train_ltm_step(self):
         if self.first_ltm_train:
             self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
@@ -74,4 +86,9 @@ class RePR:
             self.ltm_optimizer.step()
 
     def train_gan(self):
+        if random.random() < 1/self.tasks_seen:
+            real_samples = self.ltm_replay.sample(self.batch_size)
+        else:
+            real_samples = self.gan.sample(batch=self.batch_size)
 
+        self.new_gan.train_step(real_samples)
