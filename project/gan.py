@@ -5,22 +5,22 @@ import torch.optim as optim
 
 
 class GAN:
-    def __init__(self, lambda=0.1, lr=0.001, drift=1e-6):
+    def __init__(self, tradeoff=0.1, lr=0.001, drift=1e-6):
         super(GAN, self).__init__()
 
         self.gen = nn.Sequential(
             nn.Linear(100, 256 * 7 * 7),
-            nn.BatchNorm1d(momentum=0.9, eps=1e-5),
+            nn.BatchNorm1d(256*7*7, momentum=0.9, eps=1e-5),
             nn.ReLU(),
             nn.Unflatten(-1, (256, 7, 7)),
             nn.ConvTranspose2d(256, 256, kernel_size=(5, 5), stride=(3, 3)),
-            nn.BatchNorm1d(momentum=0.9, eps=1e-5),
+            nn.BatchNorm1d(256, momentum=0.9, eps=1e-5),
             nn.ReLU(),
             nn.ConvTranspose2d(256, 128, kernel_size=(5, 5), stride=(2, 2)),
-            nn.BatchNorm1d(momentum=0.9, eps=1e-5),
+            nn.BatchNorm1d(128, momentum=0.9, eps=1e-5),
             nn.ReLU(),
             nn.ConvTranspose2d(128, 64, kernel_size=(5, 5), stride=(2, 2)),
-            nn.BatchNorm1d(momentum=0.9, eps=1e-5),
+            nn.BatchNorm1d(64, momentum=0.9, eps=1e-5),
             nn.ReLU(),
             nn.ConvTranspose2d(64, 4, kernel_size=(5, 5), stride=(1, 1)),
             nn.Tanh(),
@@ -41,7 +41,7 @@ class GAN:
         self.disc_optim = optim.Adam(
             self.disc.parameters(), lr=lr, betas=(0, 0.99))
 
-        self.lambda = lamda
+        self.tradeoff = tradeoff
         self.drift = drift
 
     def sample(self, batch=1):
@@ -79,7 +79,7 @@ class GAN:
         fake_pred = self.classify(fake_samples)
 
         disc_loss = (fake_pred.mean() - real_pred.mean()
-                     + self.lambda * self.grad_penality(real_samples, fake_samples)
+                     + self.tradeoff * self.grad_penality(real_samples, fake_samples)
                      + self.drift * ((real_pred**2).mean() + (fake_pred**2).mean()))
         gen_loss = - fake_pred.mean()
 
