@@ -1,4 +1,3 @@
-import collections
 import random
 import numpy as np
 import torch
@@ -6,51 +5,66 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class ReplayBuffer:
     def __init__(self, size=100):
         self.buffer = [()] * size
         self.max_size = size
+        self.curr_size = 0
         self.idx = 0
 
     def put(self, transition):
         # Transition in the form (action, reward, terminal, next_state)
         self.buffer[self.idx] = transition
         self.idx = (self.idx + 1) % self.max_size
+        self.curr_size = min(self.max_size, self.curr_size + 1)
 
     def sample(self, n):
-        idxs = random.sample(range(self.size - 4), n)
+        idxs = random.sample(range(4, self.size() - 1), n)
         s_lst, a_lst, r_lst, done_mask_lst, s_prime_lst = [], [], [], [], []
 
         for idx in idxs:
+            # Prevent getting a sample as a transition
+            # from an episode to another
+            _, _, done, _ = self.buffer[idx - 1]
+            if done:
+                if idx < self.max_size:
+                    idx += 1
+                else:
+                    idx = 4
+
+            # Create samples
             a, r, done_mask, _ = self.buffer[idx]
-            s = [s_ for _, _, _, s_ in self.bufer[idx - 4: idx]]
-            s_prime = [s_ for _, _, _, s_ in self.bufer[idx - 3: idx + 1]]
-            s_lst.append(torch.tensor(s))
+            s = [s_ for _, _, _, s_ in self.buffer[idx - 4 : idx]]
+            s_prime = [s_ for _, _, _, s_ in self.buffer[idx - 3 : idx + 1]]
+            s_lst.append(2 * s / 255.0 - 1)
             a_lst.append([a])
             r_lst.append([r])
-            s_prime_lst.append(torch.tensor(s_prime))
-            done_mask_lst.append([done_mask])
+            s_prime_lst.append(2 * s_prime / 255.0 - 1)
+            done_mask_lst.append([0 if done_mask else 1])
 
         return (
-            torch.tensor(s_lst, dtype=torch.float),
+            torch.from_numpy(np.array(s_lst)).float(),
             torch.tensor(a_lst),
             torch.tensor(r_lst),
-            torch.tensor(s_prime_lst, dtype=torch.float),
+            torch.from_numpy(np.array(s_prime_lst)).float(),
             torch.tensor(done_mask_lst),
         )
 
     def size(self):
-        return len(self.buffer)
+        return self.curr_size
 
 
 class Qnet(nn.Module):
     def __init__(self, action_space=18):
         super(Qnet, self).__init__()
+        self.action_space = action_space
         self.conv1 = nn.Conv2d(4, 32, (8, 8), stride=(4, 4))
         self.conv2 = nn.Conv2d(32, 64, (4, 4), stride=(2, 2))
         self.conv3 = nn.Conv2d(64, 64, (3, 3))
-        self.fc1 = nn.Linear(6 * 6 * 64, 512)
+        self.fc1 = nn.Linear(7 * 7 * 64, 512)
         self.fc2 = nn.Linear(512, action_space)
 
     def forward(self, x):
@@ -61,6 +75,18 @@ class Qnet(nn.Module):
         x = self.fc2(x)
         return x
 
+    def sample_action(self, x, epsilon=0.1, mode="train"):
+        x = 2 * x / 255.0
+        if mode == "eval":
+            epsilon = 0.1
+
+        coin = random.random()
+        if coin < epsilon:
+            return random.randint(0, self.action_space - 1)
+        else:
+            probs = self(x)
+            return probs.argmax().item()
+
 
 class DQN:
     def __init__(
@@ -68,57 +94,58 @@ class DQN:
         lr=0.00025,
         gamma=0.99,
         buffer=200_000,
-        start_train=1000,
+        start_train=50_000,
+        update_freq=4,
+        update_target=5_000,
         batch_size=32,
         action_space=18,
         epsilon_start=1.0,
         epsilon_end=0.1,
-        epsilon_delta=100,
-        train=True
+        epsilon_delta=1_000_000,
+        train=True,
     ):
-        self.q_net = Qnet(action_space=action_space)
+        self.q_net = Qnet(action_space=action_space).to(device)
 
         # Initialize target QNet with base QNet parameters
-        self.q_target = Qnet(action_space=action_space)
+        self.q_target = Qnet(action_space=action_space).to(device)
         self.q_target.load_state_dict(self.q_net.state_dict())
 
         self.replay = ReplayBuffer(size=buffer)
         self.start_buffer_size = start_train
         self.batch_size = batch_size
+        self.update_freq = update_freq
+        self.update_target = update_target
 
         # Epsilon annealing scheduling function
-        self.epsilon = lambda step: max(
-            epsilon_end,
-            epsilon_start - 1.0 * step *
-            (epsilon_start - epsilon_end) / epsilon_delta,
+        self.epsilon = lambda step: min(
+            1.0,
+            max(
+                epsilon_end,
+                epsilon_start
+                - 1.0
+                * (step - start_train)
+                * (epsilon_start - epsilon_end)
+                / epsilon_delta,
+            ),
         )
         self.step_count = 0
+        self.last_loss = 10000
         self.action_space = action_space
 
         self.train = train
         self.gamma = gamma
-        self.optimizer = optim.RMSprop(
-            self.q_net.parameters(), lr=lr, eps=1e-6)
+        self.optimizer = optim.RMSprop(self.q_net.parameters(), lr=lr, eps=1e-6)
 
     def sample_action(self, obs):
+        obs = obs.to(device)
         if self.train:
             self.step_count += 1
-            coin = random.random()
-            if coin < self.epsilon(self.step_count):
-                return random.randint(0, self.action_space - 1)
-            else:
-                out = self.q_net(obs)
-                return out.argmax().item()
+            return self.q_net.sample_action(obs, self.epsilon(self.step_count), "train")
         else:
-            coin = random.random()
-            if coin < 0.1:
-                return random.randint(0, self.action_space - 1)
-            else:
-                out = self.q_net(obs)
-                return out.argmax().item()
-
+            return self.q_net.sample_action(obs, self.epsilon(self.step_count), "eval")
 
     def logits(self, obs):
+        obs = obs.to(device)
         return self.q_net(obs)
 
     def receive_transition(self, obs):
@@ -129,17 +156,30 @@ class DQN:
         self.q_target.load_state_dict(other_dqn.q_target.state_dict())
 
     def train_step(self):
+        # print(f"Train DQN step {self.replay.size()}")
         if self.replay.size() > self.start_buffer_size:
-            s, a, r, s_prime, done_mask = self.replay.sample(self.batch_size)
+            if self.step_count % self.update_target == 0:
+                self.q_target.load_state_dict(self.q_net.state_dict())
 
-            with torch.no_grad():
-                max_q_prime = self.q_target(s_prime).max(1)[0].unsqueeze(1)
-                target = r + self.gamma * max_q_prime * done_mask
+            if self.step_count % self.update_freq == 0:
+                s, a, r, s_prime, done_mask = self.replay.sample(self.batch_size)
+                s = s.to(device)
+                a = a.to(device)
+                r = r.to(device)
+                s_prime = s_prime.to(device)
+                done_mask = done_mask.to(device)
 
-            q_out = self.q_net(s)
-            q_a = q_out.gather(1, a)
-            loss = F.smooth_l1_loss(q_a, target)
+                with torch.no_grad():
+                    max_q_prime = self.q_target(s_prime).max(1)[0].unsqueeze(1)
+                    target = r + self.gamma * max_q_prime * done_mask
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+                q_out = self.q_net(s)
+                q_a = q_out.gather(1, a)
+                loss = F.smooth_l1_loss(q_a, target)
+
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+                self.last_loss = loss.detach().item()
+
+        return self.last_loss

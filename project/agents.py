@@ -1,4 +1,5 @@
 import collections
+import os
 import logging
 import tella
 import torch
@@ -7,12 +8,15 @@ import numpy as np
 from repr import RePR
 from curriculums.atari import SimpleAtariSequenceCurriculum
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 def preprocess(one_last_frame, last_frame):
     x = np.maximum(one_last_frame, last_frame)
     x = x.astype(np.uint8)
     x = cv2.cvtColor(x, cv2.COLOR_RGB2GRAY)
-    x = cv2.resize(x, (82, 82), interpolation=cv2.INTER_LINEAR)
+    x = cv2.resize(x, (84, 84), interpolation=cv2.INTER_LINEAR)
+    # return (x / 255.) * 2 - 1
     return x
 
 
@@ -27,30 +31,48 @@ class RePRAgent(tella.ContinualRLAgent):
         self.repr_model = RePR()
         self.frames_per_update = 4
         self.env_steps = 0
+        self.total_steps = 0
         self.buffer_observations = []
         self.buffer_sample_action = collections.deque(maxlen=4)
         self.trainning = False
+        self.first_ltm_train = True
 
+        self.checkpoint_count = 0
         self.logger = logging.getLogger("RePR Agent")
 
     def block_start(self, is_learning_allowed):
+        self.trainning = is_learning_allowed
+        self.repr_model.learning(is_learning_allowed)
+        # self.logger.info(f"Block with learning: {self.trainning}")
+
+    def task_start(self, task_name):
+        # self.logger.info(f"Start task {task_name}")
+        pass
+
+    def task_variant_start(self, task_name, variant_name):
         self.env_steps = 0
+        self.total_steps = 0
         self.buffer_observations = []
         self.buffer_sample_action = collections.deque(maxlen=4)
 
-        self.trainning = is_learning_allowed
-        self.repr_model.learning(is_learning_allowed)
-        self.logger.info(f"Block with learning: {self.trainning}")
+        if "Checkpoint" in variant_name:
+            if not self.trainning:
+                checkpoint_path = f"./logs/latest/checkpoint_{self.checkpoint_count}/"
+                if not os.path.exists(checkpoint_path):
+                    os.makedirs(checkpoint_path)
+                self.repr_model.save_checkpoint(dir=checkpoint_path)
+                self.checkpoint_count += 1
 
-    def task_start(self, task_name):
-        self.logger.info(f"Start task {task_name}")
+        if "STM" in variant_name:
+            self.repr_model.set_mode("stm")
+        elif "LTM" in variant_name:
+            if self.trainning:
+                self.repr_model.first_ltm_train = self.first_ltm_train
+                self.repr_model.tasks_seen += 1
+                if self.first_ltm_train:
+                    self.first_ltm_train = False
+            self.repr_model.set_mode("ltm")
 
-    def task_variant_start(self, task_name, variant_name):
-        if self.trainning:
-            if "0" in variant_name:
-                self.repr_model.set_mode("stm")
-            else:
-                self.repr_model.set_mode("ltm")
         self.logger.info(f"Start variant {variant_name}")
 
     def choose_actions(self, observations):
@@ -59,34 +81,42 @@ class RePRAgent(tella.ContinualRLAgent):
         elif self.env_steps % self.frames_per_update == 0:
             # Sample new Action
             x = list(self.buffer_sample_action)
-            x = np.array([x[0]] * (4-len(x)) + x)
+            x = np.array([x[0]] * (4 - len(x)) + x)
+            x = 2 * x / 255.0 - 1
             x = torch.from_numpy(x).float().unsqueeze(0)
-            self.curr_action = self.repr_model.sample_action(x)
+            with torch.no_grad():
+                self.curr_action = self.repr_model.sample_action(x)
 
         self.env_steps += 1
+        self.total_steps += 1
         # print(f"Log| Selected action: {self.curr_action}")
         # Keep sending current action
         return [self.curr_action]
 
     def receive_transitions(self, transitions):
-        self.buffer_observations.append(transitions[0])
+        # self.logger.info(f"Receiving transition - Step {self.env_steps}")
+        if transitions[0] is not None:
+            self.buffer_observations.append(transitions[0])
 
-        if self.env_steps % self.frames_per_update == 0:
-            one_last_frame = self.buffer_observations[-2][-1]
-            _, action, _, done, last_frame = self.buffer_observations[-1]
-            observation = preprocess(one_last_frame, last_frame)
-            self.buffer_sample_action.append(observation)
+            if self.env_steps % self.frames_per_update == 0:
+                one_last_frame = self.buffer_observations[-2][-1]
+                _, action, _, done, last_frame = self.buffer_observations[-1]
+                observation = preprocess(one_last_frame, last_frame)
+                self.buffer_sample_action.append(observation)
 
-            if self.trainning:
-                total_r = sum([r for _, _, r, _, _ in self.buffer_observations])
-                self.repr_model.add_transition(
-                    (observation, action, total_r, done))
+                if self.trainning:
+                    total_r = sum([r for _, _, r, _, _ in self.buffer_observations])
+                    self.repr_model.add_transition((action, total_r, done, observation))
 
-            self.buffer_observations = []
-            if done:
-                self.env_steps = 0
+                self.buffer_observations = []
+                if done:
+                    self.env_steps = 0
 
     def task_variant_end(self, task_name, variant_name):
+        if self.trainning:
+            if "Last" in variant_name:
+                self.repr_model.set_mode("gan")
+                self.repr_model.train_step()
         pass
 
     def task_end(self, task_name):
@@ -98,5 +128,10 @@ class RePRAgent(tella.ContinualRLAgent):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    tella.curriculum.curriculum_registry["SimpleAtari"] = SimpleAtariSequenceCurriculum
-    tella.rl_cli(RePRAgent)
+    tella.rl_experiment(
+        RePRAgent,
+        SimpleAtariSequenceCurriculum,
+        num_lifetimes=1,
+        num_parallel_envs=1,
+        log_dir="./logs",
+    )

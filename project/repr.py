@@ -1,13 +1,17 @@
 import random
+import collections
+from copy import deepcopy
 import torch
 from dqn import DQN, Qnet, ReplayBuffer
 from gan import GAN
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class RePR:
     def __init__(self, mode="stm", batch_size=32, alpha=0.5):
         self.stm_dqn = DQN()
-        self.ltm_net = Qnet()
+        self.ltm_net = Qnet().to(device)
         self.ltm_replay = ReplayBuffer(size=200_000)
         self.gan = GAN()
         self.new_gan = GAN()
@@ -23,8 +27,14 @@ class RePR:
             self.ltm_net.parameters(), lr=0.00025, eps=1e-6
         )
         self.trainning = False
+        self.tasks_seen = 0
+        self.stm_loss = collections.deque(maxlen=10_000)
+
+        self.stm_steps = 0
+        self.ltm_steps = 0
 
     def learning(self, learn):
+        self.stm_dqn.train = learn
         self.trainning = learn
 
     def add_transition(self, obs):
@@ -33,22 +43,34 @@ class RePR:
         else:
             self.ltm_replay.put(obs)
 
+        if self.trainning:
+            self.train_step()
+
     def sample_action(self, obs):
         if self.mode == "stm":
             return self.stm_dqn.sample_action(obs)
         else:
-            out = self.ltm_net(obs)
-            coin = random.random()
-            if coin < 0.1:
-                return random.randint(0, 18)
-            else:
-                return out.argmax().item()
+            return self.ltm_net.sample_action(
+                obs, mode="train" if self.trainning else "eval"
+            )
 
-    def train_stm_step(self):
-        self.stm_dqn.train_step()
-        pass
+    def set_mode(self, mode):
+        if not mode == self.mode:
+            if mode == "stm":
+                self.stm_steps = 0
+                self.stm_dqn = DQN()
+            if mode == "ltm":
+                self.ltm_steps = 0
+                self.gan.copy_from(self.new_gan)
+                self.prev_ltm_net = Qnet().to(device)
+                self.prev_ltm_net.load_state_dict(self.ltm_net.state_dict())
+                self.ltm_replay = ReplayBuffer(size=200_000)
+            if mode == "gan":
+                self.new_gan = GAN()
+        self.mode = mode
 
     def train_step(self):
+        # print("Training RePR")
         if self.mode == "stm":
             self.train_stm_step()
         elif self.mode == "ltm":
@@ -56,49 +78,100 @@ class RePR:
         else:
             self.train_gan()
 
-    def set_mode(self, mode):
-        if not mode == self.mode:
-            if mode == "stm":
-                self.stm_dqn = DQN()
-            if mode == "ltm":
-                self.gan = self.new_gan
-                self.prev_ltm_net = Qnet()
-                self.prev_ltm_net.load_state_dict(self.ltm_net.state_dict())
-                self.ltm_replay = ReplayBuffer(size=200_000)
-            if mode == "gan":
-                self.new_gan = GAN()
-
-    def train_ltm_step(self):
-        if self.first_ltm_train:
-            self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
-            self.first_ltm_train = False
-        else:
-            s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
-
-            ltm_q_out = self.ltm_net(s)
-            stm_q_out = self.stm_dqn.logits(s)
-
-            loss_curr_task = torch.nn.functional.mse_loss(ltm_q_out, stm_q_out)
-
-            gen_obs = self.gan.sample(self.ltm_net.batch_size)
-            ltm_q_out_gen = self.ltm_net(gen_obs)
-            prev_ltm_q_out_gen = self.prev_ltm_net(gen_obs)
-
-            loss_prev_task = torch.nn.functional.mse_loss(
-                ltm_q_out_gen, prev_ltm_q_out_gen
+    def train_stm_step(self):
+        loss = self.stm_dqn.train_step()
+        self.stm_loss.append(loss)
+        self.stm_steps += 1
+        if self.stm_steps % 10_000 == 0:
+            print(
+                f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
+                + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
             )
 
-            loss = self.alpha * loss_curr_task + \
-                (1 - self.alpha) * loss_prev_task
+    def train_ltm_step(self):
+        self.ltm_steps += 1
+        if self.first_ltm_train:
+            self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
+            self.ltm_replay = deepcopy(self.stm_dqn.replay)
+        else:
+            if self.ltm_replay.size() > self.stm_dqn.start_buffer_size:
+                s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
+                s = s.to(device)
 
-            self.ltm_optimizer.zero_grad()
-            loss.backward()
-            self.ltm_optimizer.step()
+                ltm_q_out = self.ltm_net(s)
+                stm_q_out = self.stm_dqn.logits(s)
+
+                loss_curr_task = torch.nn.functional.mse_loss(
+                    ltm_q_out, stm_q_out)
+
+                with torch.no_grad():
+                    gen_obs = self.gan.sample(self.batch_size)
+                    prev_ltm_q_out_gen = self.prev_ltm_net(gen_obs)
+
+                ltm_q_out_gen = self.ltm_net(gen_obs)
+
+                loss_prev_task = torch.nn.functional.mse_loss(
+                    ltm_q_out_gen, prev_ltm_q_out_gen
+                )
+
+                loss = self.alpha * loss_curr_task + \
+                    (1 - self.alpha) * loss_prev_task
+
+                self.ltm_optimizer.zero_grad()
+                loss.backward()
+                self.ltm_optimizer.step()
+                print(f"LTM Train | Loss:{loss.detach().item():.4f}", end="\r")
 
     def train_gan(self):
-        if random.random() < 1 / self.tasks_seen:
-            real_samples = self.ltm_replay.sample(self.batch_size)
-        else:
-            real_samples = self.gan.sample(batch=self.batch_size)
+        print(
+            f"Buffer size: {self.ltm_replay.size()} - Batch: {self.batch_size}")
+        avg_disc_loss = 0
+        avg_gen_loss = 0
+        for i in range(200_000):
+            if random.random() < 1 / self.tasks_seen:
+                real_samples = self.ltm_replay.sample(100)[0]
+            else:
+                real_samples = self.gan.sample(batch=100)
 
-        self.new_gan.train_step(real_samples)
+            disc_loss, gen_loss = self.new_gan.train_step(real_samples)
+            avg_disc_loss += disc_loss / 20
+            avg_gen_loss += gen_loss / 20
+            print(
+                f"GAN TRAIN [{i}/20] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
+                end="\r",
+            )
+        print(
+            f"GAN TRAIN [20/20] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}"
+        )
+
+    def save_checkpoint(self, dir="./logs/checkpoints/"):
+        # Save stm
+        torch.save(
+            {
+                "iter": self.stm_steps,
+                "replay": self.stm_dqn.replay.buffer,
+                "model_state_dict": self.stm_dqn.q_net.state_dict(),
+                "optimizer_state_dict": self.stm_dqn.optimizer.state_dict(),
+            },
+            dir + "stm.pt",
+        )
+        # Save ltm
+        torch.save(
+            {
+                "iter": self.ltm_steps,
+                "replay": self.ltm_replay.buffer,
+                "model_state_dict": self.ltm_net.state_dict(),
+                "optimizer_state_dict": self.ltm_optimizer.state_dict(),
+            },
+            dir + "ltm.pt",
+        )
+        # Save GAN
+        torch.save(
+            {
+                "gen_state_dict": self.gan.gen.state_dict(),
+                "disc_state_dict": self.gan.disc.state_dict(),
+                "optimizer_gen_state_dict": self.gan.gen_optim.state_dict(),
+                "optimizer_disc_state_dict": self.gan.disc_optim.state_dict(),
+            },
+            dir + "gan.pt",
+        )
