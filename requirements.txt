@@ -1,0 +1,4 @@
+numpy==1.26.4
+opencv-python==4.10.0.82
+tella[atatri]==2.1.0
+torch==2.3.1
