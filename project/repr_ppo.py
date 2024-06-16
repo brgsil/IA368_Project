@@ -45,7 +45,7 @@ class RePR:
             self.train_r.append(obs[2])
             self.stm_model.put_data(obs)
             if self.trainning:
-                if obs[5] or len(self.stm_model.data) >= 100:
+                if obs[5] or len(self.stm_model.data) >= 1000:
                     if obs[5]:
                         self.train_ep_r.append(sum(self.train_r))
                         self.train_r = []

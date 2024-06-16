@@ -132,7 +132,7 @@ class RePRAgent(tella.ContinualRLAgent):
                         )
                     )
 
-                if done or self.env_steps >= 4000:
+                if done:
                     self.env_steps = 0
 
     def task_variant_end(self, task_name, variant_name):
