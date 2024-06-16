@@ -99,8 +99,7 @@ class PPOAgent(tella.ContinualRLAgent):
 
             if done or self.env_steps % self.frames_per_update == 0:
                 one_last_frame = self.buffer_observations[-2][-1]
-                _, action, _, done, last_frame, prob_a = self.buffer_observations[-1]
-                observation = preprocess(one_last_frame, last_frame)
+                observation = preprocess(one_last_frame, s_)
                 self.prev_observation = np.array(self.buffer_sample_action)
                 self.buffer_sample_action.append(observation)
                 curr_observation = np.array(self.buffer_sample_action)
@@ -111,15 +110,15 @@ class PPOAgent(tella.ContinualRLAgent):
                     self.model.put_data(
                         (
                             self.prev_observation,
-                            action,
+                            a,
                             total_r,
                             curr_observation,
-                            prob_a,
+                            self.action_probs,
                             done,
                         )
                     )
                     self.train_r.append(total_r)
-                    if done or self.env_steps % self.frames_per_update*self.ppo_horizon:
+                    if done or (self.env_steps % (self.frames_per_update*self.ppo_horizon) == 0):
                         self.train_ep_r.append(sum(self.train_r))
                         self.train_r = []
                         self.losses.append(self.model.train_net())

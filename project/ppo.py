@@ -7,10 +7,10 @@ import torch.optim as optim
 from torch.distributions import Categorical
 
 # Hyperparameters
-learning_rate = 0.0005
-gamma = 0.98
+learning_rate = 1e-5
+gamma = 0.99
 lmbda = 0.95
-eps_clip = 0.1
+eps_clip = 0.2
 K_epoch = 4
 
 
@@ -41,7 +41,7 @@ class PPO(nn.Module):
         return prob
 
     def logits(self, x):
-        return self.pi(F.relu(self.features(x)))
+        return self.fc_pi(F.relu(self.features(x)))
 
     def v(self, x):
         x = F.relu(self.features(x))

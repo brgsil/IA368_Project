@@ -47,6 +47,19 @@ class RePR:
             self.train_r.append(obs[2])
             self.stm_model.put_data(obs)
             if self.trainning:
+                if self.env_steps % 500_000 == 0:
+                    print(
+                        f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
+                        + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
+                        + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
+                    )
+                    with open("terminal.txt", "a") as f:
+                        f.write(
+                            f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
+                            + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
+                            + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
+                        )
+                    self.train_ep_r = []
                 if obs[5] or len(self.stm_model.data) >= 1000:
                     if obs[5]:
                         self.train_ep_r.append(sum(self.train_r))
@@ -95,19 +108,6 @@ class RePR:
         loss = self.stm_model.train_net()
         self.stm_loss.append(loss)
         self.stm_steps += 1
-        if self.env_steps % 500_000 == 0:
-            print(
-                f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
-                + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
-                + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
-            )
-            with open("terminal.txt", "a") as f:
-                f.write(
-                    f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
-                    + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
-                    + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
-                )
-            self.train_ep_r = []
 
     def train_ltm_step(self):
         self.ltm_steps += 1
@@ -115,7 +115,7 @@ class RePR:
         #    self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
         #    self.ltm_replay = deepcopy(self.stm_dqn.replay)
         # else:
-        if self.ltm_replay.size() > 10_000:
+        if self.ltm_replay.size() > 32:
             s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
             s = s.to(device)
 
@@ -140,14 +140,14 @@ class RePR:
             self.ltm_optimizer.zero_grad()
             loss.backward()
             self.ltm_optimizer.step()
-            print(f"LTM Train | Loss:{loss.detach().item():.4f}", end="\r")
+            print(f"LTM Train | Loss:{loss.detach().item():.8f}", end="\r")
 
     def train_gan(self):
         print(
             f"Buffer size: {self.ltm_replay.size()} - Batch: {self.batch_size}")
         avg_disc_loss = 0
         avg_gen_loss = 0
-        for i in range(200_000):
+        for i in range(20):
             if random.random() < 1 / self.tasks_seen:
                 real_samples = self.ltm_replay.sample(100)[0]
             else:
