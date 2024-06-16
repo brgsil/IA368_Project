@@ -47,7 +47,20 @@ class RePR:
             self.train_r.append(obs[2])
             self.stm_model.put_data(obs)
             if self.trainning:
-                if obs[5] or len(self.stm_model.data) >= 1000:
+                if self.env_steps % 50_000 == 0:
+                    print(
+                        f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
+                        + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
+                        + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
+                    )
+                    with open("terminal.txt", "a") as f:
+                        f.write(
+                            f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
+                            + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
+                            + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
+                        )
+                    self.train_ep_r = []
+                if obs[5] or len(self.stm_model.data) >= 100:
                     if obs[5]:
                         self.train_ep_r.append(sum(self.train_r))
                         self.train_r = []
@@ -95,19 +108,6 @@ class RePR:
         loss = self.stm_model.train_net()
         self.stm_loss.append(loss)
         self.stm_steps += 1
-        if self.env_steps % 500_000 == 0:
-            print(
-                f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
-                + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
-                + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
-            )
-            with open("terminal.txt", "a") as f:
-                f.write(
-                    f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
-                    + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
-                    + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
-                )
-            self.train_ep_r = []
 
     def train_ltm_step(self):
         self.ltm_steps += 1
