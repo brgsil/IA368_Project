@@ -88,10 +88,10 @@ class RePR:
                 f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
                 + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
             )
-            with open('terminal.txt','a') as f:
+            with open('terminal.txt', 'a') as f:
                 f.write(
-                f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
-                + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
+                    f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
+                    + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
                 )
 
     def train_ltm_step(self):

@@ -37,10 +37,10 @@ class ReplayBuffer:
             done_mask_lst.append([0 if done_mask else 1])
 
         return (
-            2*torch.from_numpy(np.array(s_lst)).float()/255. -1,
+            2 * torch.from_numpy(np.array(s_lst)).float() / 255.0 - 1,
             torch.tensor(a_lst),
             torch.tensor(r_lst),
-            2*torch.from_numpy(np.array(s_prime_lst)).float()/255. -1,
+            2 * torch.from_numpy(np.array(s_prime_lst)).float() / 255.0 - 1,
             torch.tensor(done_mask_lst),
         )
 
