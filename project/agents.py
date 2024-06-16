@@ -5,7 +5,9 @@ import tella
 import torch
 import cv2
 import numpy as np
-from repr import RePR
+
+# from repr import RePR
+from repr_ppo import RePR
 from curriculums.atari import SimpleAtariSequenceCurriculum
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -35,7 +37,8 @@ class RePRAgent(tella.ContinualRLAgent):
         self.total_steps = 0
         self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
-        self.prev_observation = np.zeros((4,84,84))
+        self.prev_observation = np.zeros((4, 84, 84))
+        self.action_probs = 1 / 18.0
         self.trainning = False
         self.first_ltm_train = True
 
@@ -56,10 +59,13 @@ class RePRAgent(tella.ContinualRLAgent):
         self.total_steps = 0
         self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
+        self.action_probs = 1 / 18.0
 
         if "Checkpoint" in variant_name:
             if not self.trainning:
-                checkpoint_path = f"./logs/latest/checkpoint_{self.checkpoint_count}/"
+                checkpoint_path = (
+                    f"./logs/repr_ppo/latest/checkpoint_{self.checkpoint_count}/"
+                )
                 if not os.path.exists(checkpoint_path):
                     os.makedirs(checkpoint_path)
                 self.repr_model.save_checkpoint(dir=checkpoint_path)
@@ -80,6 +86,7 @@ class RePRAgent(tella.ContinualRLAgent):
     def choose_actions(self, observations):
         if self.env_steps < self.frames_per_update:
             self.curr_action = 0
+            self.action_probs = 1 / 18.0
         elif self.env_steps % self.frames_per_update == 0:
             # Sample new Action
             x = list(self.buffer_sample_action)
@@ -87,7 +94,8 @@ class RePRAgent(tella.ContinualRLAgent):
             x = 2 * x / 255.0 - 1
             x = torch.from_numpy(x).float().unsqueeze(0)
             with torch.no_grad():
-                self.curr_action = self.repr_model.sample_action(x)
+                self.curr_action, self.action_probs = self.repr_model.sample_action(
+                    x)
 
         self.env_steps += 1
         self.total_steps += 1
@@ -99,21 +107,32 @@ class RePRAgent(tella.ContinualRLAgent):
         # self.logger.info(f"Receiving transition - Step {self.env_steps}")
         if transitions[0] is not None:
             s, a, r, done, s_ = transitions[0]
-            self.buffer_observations.append(transitions[0])
+            self.buffer_observations.append(
+                (s, a, r, done, s_, self.action_probs))
 
             if done or self.env_steps % self.frames_per_update == 0:
                 one_last_frame = self.buffer_observations[-2][-1]
-                _, action, _, done, last_frame = self.buffer_observations[-1]
+                _, action, _, done, last_frame, prob_a = self.buffer_observations[-1]
                 observation = preprocess(one_last_frame, last_frame)
                 self.prev_observation = np.array(self.buffer_sample_action)
                 self.buffer_sample_action.append(observation)
                 curr_observation = np.array(self.buffer_sample_action)
 
                 if self.trainning and self.prev_observation.shape[0] == 4:
-                    total_r = sum([r for _, _, r, _, _ in self.buffer_observations])
-                    self.repr_model.add_transition((self.prev_observation, action, total_r, done, curr_observation))
+                    total_r = sum(
+                        [r for _, _, r, _, _, _ in self.buffer_observations])
+                    self.repr_model.add_transition(
+                        (
+                            self.prev_observation,
+                            action,
+                            total_r,
+                            curr_observation,
+                            prob_a,
+                            done,
+                        )
+                    )
 
-                if done:
+                if done or self.env_steps >= 4000:
                     self.env_steps = 0
 
     def task_variant_end(self, task_name, variant_name):

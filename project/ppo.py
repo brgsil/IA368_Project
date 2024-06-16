@@ -11,8 +11,7 @@ learning_rate = 0.0005
 gamma = 0.98
 lmbda = 0.95
 eps_clip = 0.1
-K_epoch = 3
-T_horizon = 20
+K_epoch = 4
 
 
 class PPO(nn.Module):
@@ -52,12 +51,10 @@ class PPO(nn.Module):
     def put_data(self, transition):
         self.data.append(transition)
 
-    def make_batch(self, batch=64):
+    def make_batch(self):
         s_lst, a_lst, r_lst, s_prime_lst, prob_a_lst, done_lst = [], [], [], [], [], []
-        batch = min(len(self.data), batch)
-        idxs = random.sample(range(len(self.data)), batch)
-        for idx in idxs:
-            s, a, r, s_prime, prob_a, done = self.data[idx]
+        for transition in self.data:
+            s, a, r, s_prime, prob_a, done = transition
 
             s_lst.append(2 * s / 255.0 - 1)
             a_lst.append([a])
@@ -75,6 +72,10 @@ class PPO(nn.Module):
             torch.tensor(done_lst, dtype=torch.float),
             torch.tensor(prob_a_lst),
         )
+
+        del self.data
+        self.data = []
+
         return s, a, r, s_prime, done_mask, prob_a
 
     def sample_action(self, x):
@@ -85,10 +86,10 @@ class PPO(nn.Module):
         return a, prob[0, a].item()
 
     def train_net(self):
+        s, a, r, s_prime, done_mask, prob_a = self.make_batch()
 
         acc_loss = []
         for i in range(K_epoch):
-            s, a, r, s_prime, done_mask, prob_a = self.make_batch()
             td_target = r + gamma * self.v(s_prime) * done_mask
             delta = td_target - self.v(s)
             delta = delta.detach().numpy()
@@ -118,8 +119,6 @@ class PPO(nn.Module):
             self.optimizer.step()
             acc_loss.append(loss.mean().detach().item())
 
-        del self.data
-        self.data = []
         return sum(acc_loss)/len(acc_loss)
 
     def save_checkpoint(self, dir):

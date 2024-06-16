@@ -41,6 +41,7 @@ class PPOAgent(tella.ContinualRLAgent):
         self.train_r = []
         self.train_ep_r = []
         self.logger = logging.getLogger("PPO Agent")
+        self.ppo_horizon = 1000
 
     def block_start(self, is_learning_allowed):
         self.trainning = is_learning_allowed
@@ -118,14 +119,14 @@ class PPOAgent(tella.ContinualRLAgent):
                         )
                     )
                     self.train_r.append(total_r)
-                    if done or self.env_steps >= 4000:
+                    if done or self.env_steps >= 4*self.ppo_horizon:
                         self.train_ep_r.append(sum(self.train_r))
                         self.train_r = []
                         self.losses.append(self.model.train_net())
 
                 # self.prev_observation = observation
 
-                if done or self.env_steps >= 4000:
+                if done or self.env_steps >= 4*self.ppo_horizon:
                     self.env_steps = 0
 
         if self.trainning and self.total_steps % 200_000 == 0:
