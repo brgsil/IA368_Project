@@ -9,6 +9,7 @@ from repr import RePR
 from curriculums.atari import SimpleAtariSequenceCurriculum
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"##### DEVICE: {device}")
 
 
 def preprocess(one_last_frame, last_frame):
@@ -32,8 +33,9 @@ class RePRAgent(tella.ContinualRLAgent):
         self.frames_per_update = 4
         self.env_steps = 0
         self.total_steps = 0
-        self.buffer_observations = []
+        self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
+        self.prev_observation = np.zeros((4,84,84))
         self.trainning = False
         self.first_ltm_train = True
 
@@ -52,7 +54,7 @@ class RePRAgent(tella.ContinualRLAgent):
     def task_variant_start(self, task_name, variant_name):
         self.env_steps = 0
         self.total_steps = 0
-        self.buffer_observations = []
+        self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
 
         if "Checkpoint" in variant_name:
@@ -96,19 +98,21 @@ class RePRAgent(tella.ContinualRLAgent):
     def receive_transitions(self, transitions):
         # self.logger.info(f"Receiving transition - Step {self.env_steps}")
         if transitions[0] is not None:
+            s, a, r, done, s_ = transitions[0]
             self.buffer_observations.append(transitions[0])
 
-            if self.env_steps % self.frames_per_update == 0:
+            if done or self.env_steps % self.frames_per_update == 0:
                 one_last_frame = self.buffer_observations[-2][-1]
                 _, action, _, done, last_frame = self.buffer_observations[-1]
                 observation = preprocess(one_last_frame, last_frame)
+                self.prev_observation = np.array(self.buffer_sample_action)
                 self.buffer_sample_action.append(observation)
+                curr_observation = np.array(self.buffer_sample_action)
 
-                if self.trainning:
+                if self.trainning and self.prev_observation.shape[0] == 4:
                     total_r = sum([r for _, _, r, _, _ in self.buffer_observations])
-                    self.repr_model.add_transition((action, total_r, done, observation))
+                    self.repr_model.add_transition((self.prev_observation, action, total_r, done, curr_observation))
 
-                self.buffer_observations = []
                 if done:
                     self.env_steps = 0
 

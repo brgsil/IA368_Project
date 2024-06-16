@@ -1,4 +1,5 @@
 import random
+import collections
 import numpy as np
 import torch
 import torch.nn as nn
@@ -10,51 +11,41 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class ReplayBuffer:
     def __init__(self, size=100):
-        self.buffer = [()] * size
+        self.buffer = collections.deque(maxlen=size)
         self.max_size = size
         self.curr_size = 0
         self.idx = 0
 
     def put(self, transition):
         # Transition in the form (action, reward, terminal, next_state)
-        self.buffer[self.idx] = transition
-        self.idx = (self.idx + 1) % self.max_size
-        self.curr_size = min(self.max_size, self.curr_size + 1)
+        self.buffer.append(transition)
+        #self.buffer[self.idx] = transition
+        #self.idx = (self.idx + 1) % self.max_size
+        #self.curr_size = min(self.max_size, self.curr_size + 1)
 
     def sample(self, n):
-        idxs = random.sample(range(4, self.size() - 1), n)
+        mini_batch = random.sample(self.buffer, n)
         s_lst, a_lst, r_lst, done_mask_lst, s_prime_lst = [], [], [], [], []
 
-        for idx in idxs:
-            # Prevent getting a sample as a transition
-            # from an episode to another
-            _, _, done, _ = self.buffer[idx - 1]
-            if done:
-                if idx < self.max_size:
-                    idx += 1
-                else:
-                    idx = 4
-
+        for transition in mini_batch:
             # Create samples
-            a, r, done_mask, _ = self.buffer[idx]
-            s = [s_ for _, _, _, s_ in self.buffer[idx - 4 : idx]]
-            s_prime = [s_ for _, _, _, s_ in self.buffer[idx - 3 : idx + 1]]
-            s_lst.append(2 * s / 255.0 - 1)
+            s, a, r, done_mask, s_prime = transition
+            s_lst.append(s)
             a_lst.append([a])
             r_lst.append([r])
-            s_prime_lst.append(2 * s_prime / 255.0 - 1)
+            s_prime_lst.append(s_prime)
             done_mask_lst.append([0 if done_mask else 1])
 
         return (
-            torch.from_numpy(np.array(s_lst)).float(),
+            2*torch.from_numpy(np.array(s_lst)).float()/255. -1,
             torch.tensor(a_lst),
             torch.tensor(r_lst),
-            torch.from_numpy(np.array(s_prime_lst)).float(),
+            2*torch.from_numpy(np.array(s_prime_lst)).float()/255. -1,
             torch.tensor(done_mask_lst),
         )
 
     def size(self):
-        return self.curr_size
+        return len(self.buffer)
 
 
 class Qnet(nn.Module):
@@ -93,8 +84,8 @@ class DQN:
         self,
         lr=0.00025,
         gamma=0.99,
-        buffer=200_000,
-        start_train=50_000,
+        buffer=20_000,
+        start_train=10_000,
         update_freq=4,
         update_target=5_000,
         batch_size=32,
@@ -175,7 +166,7 @@ class DQN:
 
                 q_out = self.q_net(s)
                 q_a = q_out.gather(1, a)
-                loss = F.smooth_l1_loss(q_a, target)
+                loss = -F.smooth_l1_loss(q_a, target)
 
                 self.optimizer.zero_grad()
                 loss.backward()
