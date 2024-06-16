@@ -119,15 +119,18 @@ class PPO(nn.Module):
             self.optimizer.step()
             acc_loss.append(loss.mean().detach().item())
 
-        return sum(acc_loss)/len(acc_loss)
+        return sum(acc_loss) / len(acc_loss)
 
     def save_checkpoint(self, dir):
-        torch.save({
-            'features_model': self.features.state_dict(),
-            'pi_mode': self.fc_pi.state_dict(),
-            'v_model': self.fc_v.state_dict(),
-            'optim': self.optimizer.state_dict(),
-        }, dir + 'ppo.pt')
+        torch.save(
+            {
+                "features_model": self.features.state_dict(),
+                "pi_mode": self.fc_pi.state_dict(),
+                "v_model": self.fc_v.state_dict(),
+                "optim": self.optimizer.state_dict(),
+            },
+            dir + "ppo.pt",
+        )
 
 
 """

@@ -118,16 +118,15 @@ class PPOAgent(tella.ContinualRLAgent):
                         )
                     )
                     self.train_r.append(total_r)
-                    if done or self.env_steps >= 4*self.ppo_horizon:
-                        print(f"TRAIN - {len(self.model.data)}")
+                    if done or self.env_steps >= self.frames_per_update*self.ppo_horizon:
                         self.losses.append(self.model.train_net())
 
                 # self.prev_observation = observation
 
-                if done or self.env_steps >= 4*self.ppo_horizon:
+                if done:
                     self.env_steps = 0
 
-        if self.trainning and self.total_steps % 500_000 == 0:
+        if self.trainning and self.total_steps % 10_000 == 0:
             print(
                 f"Train [{self.total_steps/4_000_000.:.2f}M] |"
                 + f"Loss {sum(self.losses)/len(self.losses):.4f}"
