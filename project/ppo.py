@@ -52,7 +52,7 @@ class PPO(nn.Module):
     def put_data(self, transition):
         self.data.append(transition)
 
-    def make_batch(self, batch=32):
+    def make_batch(self, batch=64):
         s_lst, a_lst, r_lst, s_prime_lst, prob_a_lst, done_lst = [], [], [], [], [], []
         batch = min(len(self.data), batch)
         idxs = random.sample(range(len(self.data)), batch)

@@ -39,6 +39,7 @@ class PPOAgent(tella.ContinualRLAgent):
         self.checkpoint_count = 0
         self.losses = []
         self.train_r = []
+        self.train_ep_r = []
         self.logger = logging.getLogger("PPO Agent")
 
     def block_start(self, is_learning_allowed):
@@ -118,6 +119,8 @@ class PPOAgent(tella.ContinualRLAgent):
                     )
                     self.train_r.append(total_r)
                     if done or self.env_steps >= 4000:
+                        self.train_ep_r.append(sum(self.train_r))
+                        self.train_r = []
                         self.losses.append(self.model.train_net())
 
                 # self.prev_observation = observation
@@ -125,13 +128,13 @@ class PPOAgent(tella.ContinualRLAgent):
                 if done or self.env_steps >= 4000:
                     self.env_steps = 0
 
-        if self.trainning and self.total_steps % 50_000 == 0:
+        if self.trainning and self.total_steps % 200_000 == 0:
             print(
-                f"Train [{self.total_steps/1_000_000.:.2f}M] |"
+                f"Train [{self.total_steps/4_000_000.:.2f}M] |"
                 + f"Loss {sum(self.losses)/len(self.losses):.4f}"
-                + f" | Reward {sum(self.train_r)/len(self.train_r):.1f}"
+                + f" | Reward {sum(self.train_ep_r)/len(self.train_ep_r):.1f}"
             )
-            self.train_r = []
+            self.train_ep_r = []
 
     def task_variant_end(self, task_name, variant_name):
         pass
