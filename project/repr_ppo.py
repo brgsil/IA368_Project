@@ -3,6 +3,7 @@ import collections
 from copy import deepcopy
 import torch
 from dqn import DQN, Qnet, ReplayBuffer
+from ppo import PPO
 from gan import GAN
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -10,7 +11,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class RePR:
     def __init__(self, mode="stm", batch_size=32, alpha=0.5):
-        self.stm_dqn = DQN()
+        self.stm_model = PPO()
         self.ltm_net = Qnet().to(device)
         self.ltm_replay = ReplayBuffer(size=200_000)
         self.gan = GAN()
@@ -29,26 +30,34 @@ class RePR:
         self.trainning = False
         self.tasks_seen = 0
         self.stm_loss = collections.deque(maxlen=100_000)
+        self.train_r = []
+        self.train_ep_r = []
 
         self.stm_steps = 0
         self.ltm_steps = 0
 
     def learning(self, learn):
-        self.stm_dqn.train = learn
+        # self.stm_model.train = learn
         self.trainning = learn
 
     def add_transition(self, obs):
         if self.mode == "stm":
-            self.stm_dqn.receive_transition(obs)
+            self.train_r.append(obs[2])
+            self.stm_model.put_data(obs)
+            if self.trainning:
+                if obs[5] or len(self.stm_model.data) >= 100:
+                    if obs[5]:
+                        self.train_ep_r.append(sum(self.train_r))
+                        self.train_r = []
+                    self.train_step()
         else:
             self.ltm_replay.put(obs)
-
-        if self.trainning:
-            self.train_step()
+            if self.trainning:
+                self.train_step()
 
     def sample_action(self, obs):
         if self.mode == "stm":
-            return self.stm_dqn.sample_action(obs)
+            return self.stm_model.sample_action(obs)
         else:
             return self.ltm_net.sample_action(
                 obs, mode="train" if self.trainning else "eval"
@@ -57,8 +66,9 @@ class RePR:
     def set_mode(self, mode):
         if not mode == self.mode:
             if mode == "stm":
+                print("CHANGE")
                 self.stm_steps = 0
-                self.stm_dqn = DQN()
+                self.stm_model = PPO()
             if mode == "ltm":
                 self.ltm_steps = 0
                 self.gan.copy_from(self.new_gan)
@@ -79,53 +89,55 @@ class RePR:
             self.train_gan()
 
     def train_stm_step(self):
-        loss = self.stm_dqn.train_step()
+        loss = self.stm_model.train_net()
         self.stm_loss.append(loss)
         self.stm_steps += 1
-        if self.stm_steps % 50_000 == 0:
+        if self.stm_steps % 1_000 == 0:
             print(
                 f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
                 + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
+                + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
             )
-            with open('terminal.txt', 'a') as f:
+            with open("terminal.txt", "a") as f:
                 f.write(
                     f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
                     + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
+                    + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
                 )
+            self.train_ep_r = []
 
     def train_ltm_step(self):
         self.ltm_steps += 1
-        if self.first_ltm_train:
-            self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
-            self.ltm_replay = deepcopy(self.stm_dqn.replay)
-        else:
-            if self.ltm_replay.size() > self.stm_dqn.start_buffer_size:
-                s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
-                s = s.to(device)
+        # if self.first_ltm_train:
+        #    self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
+        #    self.ltm_replay = deepcopy(self.stm_dqn.replay)
+        # else:
+        if self.ltm_replay.size() > 10_000:
+            s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
+            s = s.to(device)
 
-                ltm_q_out = self.ltm_net(s)
-                stm_q_out = self.stm_dqn.logits(s)
+            with torch.no_grad():
+                stm_q_out = self.stm_model.logits(s)
+                gen_obs = self.gan.sample(self.batch_size)
+                prev_ltm_q_out_gen = self.prev_ltm_net(gen_obs)
 
-                loss_curr_task = torch.nn.functional.mse_loss(
-                    ltm_q_out, stm_q_out)
+            ltm_q_out = self.ltm_net(s)
 
-                with torch.no_grad():
-                    gen_obs = self.gan.sample(self.batch_size)
-                    prev_ltm_q_out_gen = self.prev_ltm_net(gen_obs)
+            loss_curr_task = torch.nn.functional.mse_loss(ltm_q_out, stm_q_out)
 
-                ltm_q_out_gen = self.ltm_net(gen_obs)
+            ltm_q_out_gen = self.ltm_net(gen_obs)
 
-                loss_prev_task = torch.nn.functional.mse_loss(
-                    ltm_q_out_gen, prev_ltm_q_out_gen
-                )
+            loss_prev_task = torch.nn.functional.mse_loss(
+                ltm_q_out_gen, prev_ltm_q_out_gen
+            )
 
-                loss = self.alpha * loss_curr_task + \
-                    (1 - self.alpha) * loss_prev_task
+            loss = self.alpha * loss_curr_task + \
+                (1 - self.alpha) * loss_prev_task
 
-                self.ltm_optimizer.zero_grad()
-                loss.backward()
-                self.ltm_optimizer.step()
-                print(f"LTM Train | Loss:{loss.detach().item():.4f}", end="\r")
+            self.ltm_optimizer.zero_grad()
+            loss.backward()
+            self.ltm_optimizer.step()
+            print(f"LTM Train | Loss:{loss.detach().item():.4f}", end="\r")
 
     def train_gan(self):
         print(
@@ -151,15 +163,7 @@ class RePR:
 
     def save_checkpoint(self, dir="./logs/checkpoints/"):
         # Save stm
-        torch.save(
-            {
-                "iter": self.stm_steps,
-                "replay": self.stm_dqn.replay.buffer,
-                "model_state_dict": self.stm_dqn.q_net.state_dict(),
-                "optimizer_state_dict": self.stm_dqn.optimizer.state_dict(),
-            },
-            dir + "stm.pt",
-        )
+        self.stm_model.save_checkpoint(dir)
         # Save ltm
         torch.save(
             {
