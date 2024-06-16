@@ -28,7 +28,7 @@ class RePR:
         )
         self.trainning = False
         self.tasks_seen = 0
-        self.stm_loss = collections.deque(maxlen=10_000)
+        self.stm_loss = collections.deque(maxlen=100_000)
 
         self.stm_steps = 0
         self.ltm_steps = 0
@@ -82,11 +82,16 @@ class RePR:
         loss = self.stm_dqn.train_step()
         self.stm_loss.append(loss)
         self.stm_steps += 1
-        if self.stm_steps % 10_000 == 0:
+        if self.stm_steps % 50_000 == 0:
             print(
                 f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
                 + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
             )
+            with open('terminal.txt', 'a') as f:
+                f.write(
+                    f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
+                    + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
+                )
 
     def train_ltm_step(self):
         self.ltm_steps += 1

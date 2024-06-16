@@ -39,17 +39,17 @@ class ReplayBuffer:
             a, r, done_mask, _ = self.buffer[idx]
             s = [s_ for _, _, _, s_ in self.buffer[idx - 4 : idx]]
             s_prime = [s_ for _, _, _, s_ in self.buffer[idx - 3 : idx + 1]]
-            s_lst.append(2 * s / 255.0 - 1)
+            s_lst.append(s)
             a_lst.append([a])
             r_lst.append([r])
-            s_prime_lst.append(2 * s_prime / 255.0 - 1)
+            s_prime_lst.append(s_prime)
             done_mask_lst.append([0 if done_mask else 1])
 
         return (
-            torch.from_numpy(np.array(s_lst)).float(),
+            2 * torch.from_numpy(np.array(s_lst)).float() / 255.0 - 1,
             torch.tensor(a_lst),
             torch.tensor(r_lst),
-            torch.from_numpy(np.array(s_prime_lst)).float(),
+            2 * torch.from_numpy(np.array(s_prime_lst)).float() / 255.0 - 1,
             torch.tensor(done_mask_lst),
         )
 
