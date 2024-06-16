@@ -35,12 +35,14 @@ class RePR:
 
         self.stm_steps = 0
         self.ltm_steps = 0
+        self.env_steps = 0
 
     def learning(self, learn):
         # self.stm_model.train = learn
         self.trainning = learn
 
     def add_transition(self, obs):
+        self.env_steps += 1
         if self.mode == "stm":
             self.train_r.append(obs[2])
             self.stm_model.put_data(obs)
@@ -68,6 +70,7 @@ class RePR:
             if mode == "stm":
                 print("CHANGE")
                 self.stm_steps = 0
+                self.env_steps = 0
                 self.stm_model = PPO()
             if mode == "ltm":
                 self.ltm_steps = 0
@@ -92,15 +95,15 @@ class RePR:
         loss = self.stm_model.train_net()
         self.stm_loss.append(loss)
         self.stm_steps += 1
-        if self.stm_steps % 1_000 == 0:
+        if self.env_steps % 500_000 == 0:
             print(
-                f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
+                f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
                 + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
                 + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
             )
             with open("terminal.txt", "a") as f:
                 f.write(
-                    f"STM Train [{self.stm_steps/1_000_000.0:.2f}M steps] |"
+                    f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
                     + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
                     + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
                 )
