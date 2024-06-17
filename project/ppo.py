@@ -7,10 +7,10 @@ import torch.optim as optim
 from torch.distributions import Categorical
 
 # Hyperparameters
-learning_rate = 0.0005
-gamma = 0.98
+learning_rate = 3e-4
+gamma = 0.99
 lmbda = 0.95
-eps_clip = 0.1
+eps_clip = 0.15
 K_epoch = 4
 
 
@@ -41,7 +41,7 @@ class PPO(nn.Module):
         return prob
 
     def logits(self, x):
-        return self.pi(F.relu(self.features(x)))
+        return self.fc_pi(F.relu(self.features(x)))
 
     def v(self, x):
         x = F.relu(self.features(x))
@@ -119,15 +119,18 @@ class PPO(nn.Module):
             self.optimizer.step()
             acc_loss.append(loss.mean().detach().item())
 
-        return sum(acc_loss)/len(acc_loss)
+        return sum(acc_loss) / len(acc_loss)
 
     def save_checkpoint(self, dir):
-        torch.save({
-            'features_model': self.features.state_dict(),
-            'pi_mode': self.fc_pi.state_dict(),
-            'v_model': self.fc_v.state_dict(),
-            'optim': self.optimizer.state_dict(),
-        }, dir + 'ppo.pt')
+        torch.save(
+            {
+                "features_model": self.features.state_dict(),
+                "pi_mode": self.fc_pi.state_dict(),
+                "v_model": self.fc_v.state_dict(),
+                "optim": self.optimizer.state_dict(),
+            },
+            dir + "ppo.pt",
+        )
 
 
 """

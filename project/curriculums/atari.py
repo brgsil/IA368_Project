@@ -5,6 +5,7 @@ import tella
 
 class SimpleAtariSequenceCurriculum(tella.curriculum.InterleavedEvalCurriculum):
     TASKS = ["RoadRunner", "Boxing", "Jamesbond"]
+    #TASKS = [ "Boxing", "Jamesbond"]
 
     def eval_block(self) -> tella.curriculum.EvalBlock:
         rng = np.random.default_rng(self.eval_rng_seed)
@@ -52,7 +53,7 @@ def construct_variants(tasks_labels, rng):
                 tella._curriculums.atari.environments.ATARI_TASKS[tasks_labels[0]],
                 task_label=tasks_labels[0],
                 variant_label="LTM_Last",
-                num_steps=10,
+                num_steps=500_000,
                 rng_seed=rng.bit_generator.random_raw(),
             )
         ]
@@ -62,12 +63,13 @@ def construct_variants(tasks_labels, rng):
         yield (
             [
                 tella.curriculum.TaskVariant(
-                    tella._curriculums.atari.environments.ATARI_TASKS[task_label],
-                    task_label=task_label,
+                    tella._curriculums.atari.environments.ATARI_TASKS[tasks_labels[0]],
+                    task_label=tasks_labels[0],
                     variant_label="STM_Train",
-                    num_steps=80_000_000,
+                    num_steps=4_000_000,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
+                for _ in range(20)
             ]
             + [
                 tella.curriculum.TaskVariant(

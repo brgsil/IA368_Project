@@ -94,8 +94,11 @@ class RePRAgent(tella.ContinualRLAgent):
             x = 2 * x / 255.0 - 1
             x = torch.from_numpy(x).float().unsqueeze(0)
             with torch.no_grad():
-                self.curr_action, self.action_probs = self.repr_model.sample_action(
+                if self.repr_model.mode == 'stm':
+                    self.curr_action, self.action_probs = self.repr_model.sample_action(
                     x)
+                else:
+                    self.curr_action = self.repr_model.sample_action(x)
 
         self.env_steps += 1
         self.total_steps += 1
@@ -121,16 +124,27 @@ class RePRAgent(tella.ContinualRLAgent):
                 if self.trainning and self.prev_observation.shape[0] == 4:
                     total_r = sum(
                         [r for _, _, r, _, _, _ in self.buffer_observations])
-                    self.repr_model.add_transition(
-                        (
-                            self.prev_observation,
-                            action,
-                            total_r,
-                            curr_observation,
-                            prob_a,
-                            done,
+                    if self.repr_model.mode == 'stm':
+                        self.repr_model.add_transition(
+                            (
+                                self.prev_observation,
+                                action,
+                                total_r,
+                                curr_observation,
+                                prob_a,
+                                done,
+                            )
                         )
-                    )
+                    else:
+                        self.repr_model.add_transition(
+                            (
+                                self.prev_observation,
+                                action,
+                                total_r,
+                                done,
+                                curr_observation,
+                            )
+                        )
 
                 if done:
                     self.env_steps = 0

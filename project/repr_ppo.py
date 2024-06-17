@@ -60,7 +60,7 @@ class RePR:
                             + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
                         )
                     self.train_ep_r = []
-                if obs[5] or len(self.stm_model.data) >= 100:
+                if obs[5] or len(self.stm_model.data) >= 500:
                     if obs[5]:
                         self.train_ep_r.append(sum(self.train_r))
                         self.train_r = []
@@ -115,7 +115,7 @@ class RePR:
         #    self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
         #    self.ltm_replay = deepcopy(self.stm_dqn.replay)
         # else:
-        if self.ltm_replay.size() > 10_000:
+        if self.ltm_replay.size() > 1_000:
             s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
             s = s.to(device)
 
@@ -140,7 +140,7 @@ class RePR:
             self.ltm_optimizer.zero_grad()
             loss.backward()
             self.ltm_optimizer.step()
-            print(f"LTM Train | Loss:{loss.detach().item():.4f}", end="\r")
+            print(f"LTM Train | Loss:{loss.detach().item():.8f}", end="\r")
 
     def train_gan(self):
         print(
@@ -157,7 +157,7 @@ class RePR:
             avg_disc_loss += disc_loss / 20
             avg_gen_loss += gen_loss / 20
             print(
-                f"GAN TRAIN [{i}/20] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
+                f"GAN TRAIN [{i}/20_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
                 end="\r",
             )
         print(

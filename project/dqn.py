@@ -120,7 +120,7 @@ class DQN:
             ),
         )
         self.step_count = 0
-        self.last_loss = 10000
+        self.last_loss = 0
         self.action_space = action_space
 
         self.train = train
