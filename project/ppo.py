@@ -7,11 +7,11 @@ import torch.optim as optim
 from torch.distributions import Categorical
 
 # Hyperparameters
-learning_rate = 3e-4
+learning_rate = 1e-4
 gamma = 0.99
 lmbda = 0.95
-eps_clip = 0.15
-K_epoch = 4
+eps_clip = 0.1
+K_epoch = 1
 
 
 class PPO(nn.Module):
@@ -35,15 +35,21 @@ class PPO(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def pi(self, x, softmax_dim=-1):
+        assert x.max().item() <= 1, f"Obs max is {x.max()}"
+        assert x.min().item() >= -1, f"Obs min is {x.min()}"
         x = F.relu(self.features(x))
         x = self.fc_pi(x)
         prob = F.softmax(x, dim=softmax_dim)
         return prob
 
     def logits(self, x):
+        assert x.max().item() <= 1, f"Obs max is {x.max()}"
+        assert x.min().item() >= -1, f"Obs min is {x.min()}"
         return self.fc_pi(F.relu(self.features(x)))
 
     def v(self, x):
+        assert x.max().item() <= 1, f"Obs max is {x.max()}"
+        assert x.min().item() >= -1, f"Obs min is {x.min()}"
         x = F.relu(self.features(x))
         v = self.fc_v(x)
         return v
@@ -79,16 +85,21 @@ class PPO(nn.Module):
         return s, a, r, s_prime, done_mask, prob_a
 
     def sample_action(self, x):
-        x = 2 * x / 255.0
+        #x = 2 * x / 256.0 - 1
         prob = self.pi(x)
         m = Categorical(prob[0])
-        a = m.sample().item()
-        return a, prob[0, a].item()
+        a = m.sample()
+        return a.detach().item(), prob[0, a].detach().item()
 
     def train_net(self):
         s, a, r, s_prime, done_mask, prob_a = self.make_batch()
+        assert s.max().item() <= 1
+        assert s.min().item() >= -1
+        assert s_prime.max().item() <= 1
+        assert s_prime.min().item() >= -1
 
         acc_loss = []
+        entropy = 0
         for i in range(K_epoch):
             td_target = r + gamma * self.v(s_prime) * done_mask
             delta = td_target - self.v(s)
@@ -103,6 +114,7 @@ class PPO(nn.Module):
             advantage = torch.tensor(advantage_lst, dtype=torch.float)
 
             pi = self.pi(s, softmax_dim=1)
+            entropy = Categorical(pi).entropy().mean().detach().item()
             pi_a = pi.gather(1, a)
             ratio = torch.exp(
                 torch.log(pi_a) - torch.log(prob_a)
@@ -119,7 +131,7 @@ class PPO(nn.Module):
             self.optimizer.step()
             acc_loss.append(loss.mean().detach().item())
 
-        return sum(acc_loss) / len(acc_loss)
+        return sum(acc_loss) / len(acc_loss), entropy
 
     def save_checkpoint(self, dir):
         torch.save(
