@@ -28,8 +28,9 @@ class RePR:
             self.ltm_net.parameters(), lr=0.00025, eps=1e-6
         )
         self.trainning = False
+        self.task = ""
         self.tasks_seen = 0
-        self.stm_loss = collections.deque(maxlen=100_000)
+        self.train_loss = collections.deque(maxlen=10_000)
         self.train_r = []
         self.train_ep_r = []
 
@@ -43,27 +44,30 @@ class RePR:
 
     def add_transition(self, obs):
         self.env_steps += 1
-        if self.mode == "stm":
+        if self.trainning:
             self.train_r.append(obs[2])
+            if obs[5]:
+                self.train_ep_r.append(sum(self.train_r))
+                self.train_r = []
+
+            if self.env_steps % 10_000 == 0:
+                print(
+                    f"{self.mode} - {self.task} Train [{self.env_steps/10_000.0:.2f}M steps] |"
+                    + f" Loss:{sum(self.train_loss)/len(self.train_loss):.5f}"
+                    + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
+                )
+                with open("terminal.txt", "a") as f:
+                    f.write(
+                        f"{self.mode} - {self.task} Train [{self.env_steps/10_000.0:.2f}M steps] |"
+                        + f" Loss:{sum(self.train_loss)/len(self.train_loss):.5f}"
+                        + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}\n"
+                    )
+                self.train_ep_r = []
+
+        if self.mode == "stm":
             self.stm_model.put_data(obs)
             if self.trainning:
-                if self.env_steps % 500_000 == 0:
-                    print(
-                        f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
-                        + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
-                        + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
-                    )
-                    with open("terminal.txt", "a") as f:
-                        f.write(
-                            f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
-                            + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
-                            + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
-                        )
-                    self.train_ep_r = []
                 if obs[5] or len(self.stm_model.data) >= 1000:
-                    if obs[5]:
-                        self.train_ep_r.append(sum(self.train_r))
-                        self.train_r = []
                     self.train_step()
         else:
             self.ltm_replay.put(obs)
@@ -86,6 +90,7 @@ class RePR:
                 self.env_steps = 0
                 self.stm_model = PPO()
             if mode == "ltm":
+                self.env_steps = 0
                 self.ltm_steps = 0
                 self.gan.copy_from(self.new_gan)
                 self.prev_ltm_net = Qnet().to(device)
@@ -106,7 +111,7 @@ class RePR:
 
     def train_stm_step(self):
         loss = self.stm_model.train_net()
-        self.stm_loss.append(loss)
+        self.train_loss.append(loss)
         self.stm_steps += 1
 
     def train_ltm_step(self):
@@ -115,39 +120,43 @@ class RePR:
         #    self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
         #    self.ltm_replay = deepcopy(self.stm_dqn.replay)
         # else:
-        if self.ltm_replay.size() > 32:
+        if self.ltm_replay.size() > 1000:
             s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
             s = s.to(device)
 
             with torch.no_grad():
                 stm_q_out = self.stm_model.logits(s)
-                gen_obs = self.gan.sample(self.batch_size)
-                prev_ltm_q_out_gen = self.prev_ltm_net(gen_obs)
 
             ltm_q_out = self.ltm_net(s)
 
             loss_curr_task = torch.nn.functional.mse_loss(ltm_q_out, stm_q_out)
 
-            ltm_q_out_gen = self.ltm_net(gen_obs)
+            if not self.first_ltm_train:
+                with torch.no_grad():
+                    gen_obs = self.gan.sample(self.batch_size)
+                    prev_ltm_q_out_gen = self.prev_ltm_net(gen_obs)
 
-            loss_prev_task = torch.nn.functional.mse_loss(
-                ltm_q_out_gen, prev_ltm_q_out_gen
-            )
+                ltm_q_out_gen = self.ltm_net(gen_obs)
 
-            loss = self.alpha * loss_curr_task + \
-                (1 - self.alpha) * loss_prev_task
+                loss_prev_task = torch.nn.functional.mse_loss(
+                    ltm_q_out_gen, prev_ltm_q_out_gen
+                )
+            else:
+                loss_prev_task = 0
+
+            loss = self.alpha * loss_curr_task + (1 - self.alpha) * loss_prev_task
 
             self.ltm_optimizer.zero_grad()
             loss.backward()
             self.ltm_optimizer.step()
+            self.train_loss.append(loss.detach().item())
             print(f"LTM Train | Loss:{loss.detach().item():.8f}", end="\r")
 
     def train_gan(self):
-        print(
-            f"Buffer size: {self.ltm_replay.size()} - Batch: {self.batch_size}")
+        print(f"Buffer size: {self.ltm_replay.size()} - Batch: {self.batch_size}")
         avg_disc_loss = 0
         avg_gen_loss = 0
-        for i in range(20):
+        for i in range(10_000):
             if random.random() < 1 / self.tasks_seen:
                 real_samples = self.ltm_replay.sample(100)[0]
             else:
@@ -157,11 +166,11 @@ class RePR:
             avg_disc_loss += disc_loss / 20
             avg_gen_loss += gen_loss / 20
             print(
-                f"GAN TRAIN [{i}/20] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
+                f"GAN TRAIN [{i}/10_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
                 end="\r",
             )
         print(
-            f"GAN TRAIN [20/20] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}"
+            f"GAN TRAIN [10_000/10_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}"
         )
 
     def save_checkpoint(self, dir="./logs/checkpoints/"):

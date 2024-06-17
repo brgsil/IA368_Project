@@ -7,10 +7,10 @@ import torch.optim as optim
 from torch.distributions import Categorical
 
 # Hyperparameters
-learning_rate = 1e-5
+learning_rate = 3e-4
 gamma = 0.99
 lmbda = 0.95
-eps_clip = 0.2
+eps_clip = 0.15
 K_epoch = 4
 
 
