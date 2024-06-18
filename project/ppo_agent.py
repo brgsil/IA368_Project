@@ -44,6 +44,8 @@ class PPOAgent(tella.ContinualRLAgent):
         self.logger = logging.getLogger("PPO Agent")
         self.ppo_horizon = 1000
         self.task = ""
+        self.test_video = {}
+        self.prev_obs_is_done = False
 
     def block_start(self, is_learning_allowed):
         self.trainning = is_learning_allowed
@@ -71,6 +73,9 @@ class PPOAgent(tella.ContinualRLAgent):
                     os.makedirs(checkpoint_path)
                 self.model.save_checkpoint(dir=checkpoint_path)
                 self.checkpoint_count += 1
+
+        if not self.trainning:
+            self.test_video[self.curr_task] = []
 
         self.logger.info(f"Start variant {variant_name}")
 
@@ -101,7 +106,14 @@ class PPOAgent(tella.ContinualRLAgent):
             self.buffer_observations.append(
                 (s, a, r, done, s_, self.action_probs))
 
-            if done or self.env_steps % self.frames_per_update == 0:
+            if (done or self.env_steps % self.frames_per_update == 0) and len(self.buffer_observations) >=2:
+                if not self.trainning:
+                    if self.prev_obs_is_done:
+                        self.test_video[self.curr_task] = []
+
+                    self.test_video[self.curr_task].append(s)
+                    self.prev_obs_is_done = done
+
                 one_last_frame = self.buffer_observations[-2][-1]
                 observation = preprocess(one_last_frame, s_)
                 self.prev_observation = np.array(self.buffer_sample_action)
@@ -136,6 +148,13 @@ class PPOAgent(tella.ContinualRLAgent):
                     self.env_steps = 0
 
         if self.trainning and (self.total_steps/self.frames_per_update) % 60_000 == 0:
+            if not self.trainning:
+                frames = self.test_video[task_name]
+                out = cv2.VideoWriter(f"outputPPO_{task_name}.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 10, (160,250))
+                for frame in frames:
+                    out.write(frame)
+                out.release()
+
             log = f"{self.task} Train [{self.total_steps/self.frames_per_update/1_000_000.:.2f}M] |"+\
                 f"Loss {sum(self.losses)/len(self.losses):.4f}"+\
                 f" | Entropy: {sum(self.entropy)/len(self.entropy):.4f}" +\
