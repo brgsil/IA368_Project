@@ -32,7 +32,7 @@ class RePRAgent(tella.ContinualRLAgent):
         )
 
         self.repr_model = RePR()
-        self.frames_per_update = 4
+        self.frames_per_update = 2
         self.env_steps = 0
         self.total_steps = 0
         self.buffer_observations = collections.deque(maxlen=4)
@@ -44,6 +44,9 @@ class RePRAgent(tella.ContinualRLAgent):
 
         self.checkpoint_count = 0
         self.logger = logging.getLogger("RePR Agent")
+        self.test_video = {}
+        self.curr_task = ""
+        self.prev_obs_is_done = False
 
     def block_start(self, is_learning_allowed):
         self.trainning = is_learning_allowed
@@ -61,6 +64,7 @@ class RePRAgent(tella.ContinualRLAgent):
         self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
         self.action_probs = 1 / 18.0
+        self.curr_task = task_name
 
         if "Checkpoint" in variant_name:
             if not self.trainning:
@@ -82,10 +86,13 @@ class RePRAgent(tella.ContinualRLAgent):
                     self.first_ltm_train = False
             self.repr_model.set_mode("ltm")
 
+        if not self.trainning:
+            self.test_video[self.curr_task] = []
+
         self.logger.info(f"Start variant {variant_name}")
 
     def choose_actions(self, observations):
-        if self.env_steps < self.frames_per_update:
+        if self.env_steps < 4:
             self.curr_action = 0
             self.action_probs = 1 / 18.0
         elif self.env_steps % self.frames_per_update == 0:
@@ -115,6 +122,13 @@ class RePRAgent(tella.ContinualRLAgent):
                 (s, a, r, done, s_, self.action_probs))
 
             if done or self.env_steps % self.frames_per_update == 0:
+                if not self.trainning:
+                    if self.prev_obs_is_done:
+                        self.test_video[self.curr_task] = []
+
+                    self.test_video[self.curr_task].append(s)
+                    self.prev_obs_is_done = done
+
                 one_last_frame = self.buffer_observations[-2][-1]
                 _, action, _, done, last_frame, prob_a = self.buffer_observations[-1]
                 observation = preprocess(one_last_frame, last_frame)
@@ -151,8 +165,13 @@ class RePRAgent(tella.ContinualRLAgent):
                     self.env_steps = 0
 
     def task_variant_end(self, task_name, variant_name):
-        for i in range(4):
-            cv2.imwrite(f"{task_name}_example_{i}.png", self.buffer_sample_action[i])
+        if not self.trainning:
+            frames = self.test_video[task_name]
+            out = cv2.VideoWriter(f"output_{task_name}.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 10, (160,250))
+            for frame in frames:
+                out.write(frame)
+            out.release()
+
         if self.trainning:
             if "Last" in variant_name:
                 self.repr_model.set_mode("gan")
