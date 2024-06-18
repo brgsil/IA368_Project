@@ -4,7 +4,9 @@ import tella
 
 
 class SimpleAtariSequenceCurriculum(tella.curriculum.InterleavedEvalCurriculum):
-    TASKS = ["RoadRunner", "Boxing", "Jamesbond"]
+    #TASKS = ["RoadRunner", "Boxing", "Jamesbond"]
+    TASKS = ["RoadRunner", "Jamesbond"]
+    #TASKS = [ "Boxing", "Jamesbond"]
 
     def eval_block(self) -> tella.curriculum.EvalBlock:
         rng = np.random.default_rng(self.eval_rng_seed)
@@ -76,7 +78,7 @@ def construct_variants(tasks_labels, rng):
                 tella._curriculums.atari.environments.ATARI_TASKS[tasks_labels[0]],
                 task_label=tasks_labels[0],
                 variant_label="STM_Train",
-                num_steps=400_000,
+                num_steps=600_000,
                 rng_seed=rng.bit_generator.random_raw(),
             )
             for _ in range(20)
@@ -86,7 +88,7 @@ def construct_variants(tasks_labels, rng):
                 tella._curriculums.atari.environments.ATARI_TASKS[tasks_labels[0]],
                 task_label=tasks_labels[0],
                 variant_label="LTM_Last",
-                num_steps=500_000,
+                num_steps=750_000,
                 rng_seed=rng.bit_generator.random_raw(),
             )
         ]
@@ -96,10 +98,10 @@ def construct_variants(tasks_labels, rng):
         yield (
             [
                 tella.curriculum.TaskVariant(
-                    tella._curriculums.atari.environments.ATARI_TASKS[task_label],
-                    task_label=task_label,
+                    tella._curriculums.atari.environments.ATARI_TASKS[tasks_labels[0]],
+                    task_label=tasks_labels[0],
                     variant_label="STM_Train",
-                    num_steps=400_000,
+                    num_steps=600_000,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
                 for _ in range(20)
@@ -109,7 +111,7 @@ def construct_variants(tasks_labels, rng):
                     tella._curriculums.atari.environments.ATARI_TASKS[task_label],
                     task_label=task_label,
                     variant_label=f"LTM_Iter_{i}",
-                    num_steps=25_000,
+                    num_steps=37_500,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
                 for i in range(19)
@@ -119,7 +121,7 @@ def construct_variants(tasks_labels, rng):
                     tella._curriculums.atari.environments.ATARI_TASKS[task_label],
                     task_label=task_label,
                     variant_label="LTM_Last",
-                    num_steps=25_000,
+                    num_steps=37_500,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
             ]

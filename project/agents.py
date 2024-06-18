@@ -121,7 +121,7 @@ class RePRAgent(tella.ContinualRLAgent):
             self.buffer_observations.append(
                 (s, a, r, done, s_, self.action_probs))
 
-            if done or self.env_steps % self.frames_per_update == 0:
+            if (done or self.env_steps % self.frames_per_update == 0) and len(self.buffer_observations) >= 2:
                 if not self.trainning:
                     if self.prev_obs_is_done:
                         self.test_video[self.curr_task] = []
