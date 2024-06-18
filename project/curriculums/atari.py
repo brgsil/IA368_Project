@@ -16,7 +16,7 @@ class SimpleAtariSequenceCurriculum(tella.curriculum.InterleavedEvalCurriculum):
                     variant_label=(
                         "Checkpoint" if task_label == self.TASKS[-1] else "Default"
                     ),
-                    num_episodes=10,
+                    num_episodes=30,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
                 for task_label in self.TASKS
