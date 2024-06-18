@@ -6,7 +6,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class GAN:
-    def __init__(self, tradeoff=0.1, lr=0.001, drift=1e-6):
+    def __init__(self, tradeoff=0.1, lr=0.0002, drift=1e-6):
         super(GAN, self).__init__()
 
         self.gen = nn.Sequential(
@@ -43,9 +43,9 @@ class GAN:
         ).to(device)
 
         self.gen_optim = optim.Adam(
-            self.gen.parameters(), lr=lr, betas=(0, 0.99))
+            self.gen.parameters(), lr=lr, betas=(0.5, 0.99))
         self.disc_optim = optim.Adam(
-            self.disc.parameters(), lr=lr, betas=(0, 0.99))
+            self.disc.parameters(), lr=lr, betas=(0.5, 0.99))
 
         self.tradeoff = tradeoff
         self.drift = drift
@@ -57,6 +57,8 @@ class GAN:
         return samples
 
     def classify(self, x):
+        assert x.max().item() <= 1
+        assert x.min().item() >= -1
         x = x.to(device)
         return self.disc(x)
 
@@ -86,6 +88,8 @@ class GAN:
 
     def train_step(self, real_samples):
         real_samples = real_samples.to(device)
+        assert real_samples.max().item() <= 1
+        assert real_samples.min().item() >= -1
         batch_size = real_samples.shape[0]
 
         fake_samples = self.sample(batch=batch_size).to(device)

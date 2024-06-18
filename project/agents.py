@@ -151,6 +151,8 @@ class RePRAgent(tella.ContinualRLAgent):
                     self.env_steps = 0
 
     def task_variant_end(self, task_name, variant_name):
+        for i in range(4):
+            cv2.imwrite(f"{task_name}_example_{i}.png", self.buffer_sample_action[i])
         if self.trainning:
             if "Last" in variant_name:
                 self.repr_model.set_mode("gan")

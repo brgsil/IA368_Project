@@ -29,7 +29,7 @@ class PPOAgent(tella.ContinualRLAgent):
         self.model = PPO()
         self.trainning = False
 
-        self.frames_per_update = 4
+        self.frames_per_update = 2
         self.env_steps = 0
         self.total_steps = 0
         self.buffer_observations = collections.deque(maxlen=4)
@@ -135,8 +135,8 @@ class PPOAgent(tella.ContinualRLAgent):
                 if done:
                     self.env_steps = 0
 
-        if self.trainning and (self.total_steps/self.frames_per_update) % 10_000 == 0:
-            log = f"{self.task} Train [{self.total_steps/self.frames_per_update/10_000.:.1f}M] |"+\
+        if self.trainning and (self.total_steps/self.frames_per_update) % 60_000 == 0:
+            log = f"{self.task} Train [{self.total_steps/self.frames_per_update/1_000_000.:.2f}M] |"+\
                 f"Loss {sum(self.losses)/len(self.losses):.4f}"+\
                 f" | Entropy: {sum(self.entropy)/len(self.entropy):.4f}" +\
                 f" | Reward {sum(self.train_ep_r)/len(self.train_ep_r):.1f}"

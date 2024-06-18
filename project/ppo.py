@@ -35,21 +35,21 @@ class PPO(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def pi(self, x, softmax_dim=-1):
-        assert x.max() <= 1
-        assert x.min() >= -1
+        assert x.max().item() <= 1, f"Obs max is {x.max()}"
+        assert x.min().item() >= -1, f"Obs min is {x.min()}"
         x = F.relu(self.features(x))
         x = self.fc_pi(x)
         prob = F.softmax(x, dim=softmax_dim)
         return prob
 
     def logits(self, x):
-        assert x.max() <= 1
-        assert x.min() >= -1
+        assert x.max().item() <= 1, f"Obs max is {x.max()}"
+        assert x.min().item() >= -1, f"Obs min is {x.min()}"
         return self.fc_pi(F.relu(self.features(x)))
 
     def v(self, x):
-        assert x.max() <= 1
-        assert x.min() >= -1
+        assert x.max().item() <= 1, f"Obs max is {x.max()}"
+        assert x.min().item() >= -1, f"Obs min is {x.min()}"
         x = F.relu(self.features(x))
         v = self.fc_v(x)
         return v
@@ -88,11 +88,15 @@ class PPO(nn.Module):
         #x = 2 * x / 255.0 - 1
         prob = self.pi(x)
         m = Categorical(prob[0])
-        a = m.sample().item()
-        return a, prob[0, a].item()
+        a = m.sample()
+        return a.detach().item(), prob[0, a].detach().item()
 
     def train_net(self):
         s, a, r, s_prime, done_mask, prob_a = self.make_batch()
+        assert s.max().item() <= 1
+        assert s.min().item() >= -1
+        assert s_prime.max().item() <= 1
+        assert s_prime.min().item() >= -1
 
         acc_loss = []
         entropy = 0

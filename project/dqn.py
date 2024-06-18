@@ -19,9 +19,9 @@ class ReplayBuffer:
     def put(self, transition):
         # Transition in the form (action, reward, terminal, next_state)
         self.buffer.append(transition)
-        #self.buffer[self.idx] = transition
-        #self.idx = (self.idx + 1) % self.max_size
-        #self.curr_size = min(self.max_size, self.curr_size + 1)
+        # self.buffer[self.idx] = transition
+        # self.idx = (self.idx + 1) % self.max_size
+        # self.curr_size = min(self.max_size, self.curr_size + 1)
 
     def sample(self, n):
         mini_batch = random.sample(self.buffer, n)
@@ -59,6 +59,8 @@ class Qnet(nn.Module):
         self.fc2 = nn.Linear(512, action_space)
 
     def forward(self, x):
+        assert x.max().item() <= 1
+        assert x.min().item() >= -1
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
@@ -67,7 +69,7 @@ class Qnet(nn.Module):
         return x
 
     def sample_action(self, x, epsilon=0.1, mode="train"):
-        x = 2 * x / 255.0
+        # x = 2 * x / 255.0
         if mode == "eval":
             epsilon = 0.1
 
