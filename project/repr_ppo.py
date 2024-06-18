@@ -13,7 +13,7 @@ class RePR:
     def __init__(self, mode="stm", batch_size=32, alpha=0.5):
         self.stm_model = PPO()
         self.ltm_net = Qnet().to(device)
-        self.ltm_replay = ReplayBuffer(size=100_000)
+        self.ltm_replay = ReplayBuffer(size=150_000)
         self.gan = GAN()
         self.new_gan = GAN()
         self.kkk = True
@@ -102,6 +102,7 @@ class RePR:
                 self.stm_steps = 0
                 self.env_steps = 0
                 self.stm_model = PPO()
+                self.ltm_replay = ReplayBuffer(size=150_000)
             if mode == "ltm":
                 self.train_loss.clear()
                 self.env_steps = 0
@@ -109,7 +110,6 @@ class RePR:
                 self.gan.copy_from(self.new_gan)
                 self.prev_ltm_net = Qnet().to(device)
                 self.prev_ltm_net.load_state_dict(self.ltm_net.state_dict())
-                self.ltm_replay = ReplayBuffer(size=200_000)
             if mode == "gan":
                 self.new_gan = GAN()
         self.mode = mode
