@@ -57,6 +57,7 @@ class RePRAgent(tella.ContinualRLAgent):
     def task_variant_start(self, task_name, variant_name):
         self.env_steps = 0
         self.total_steps = 0
+        self.repr_model.task = task_name
         self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
         self.action_probs = 1 / 18.0

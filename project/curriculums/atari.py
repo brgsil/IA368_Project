@@ -17,7 +17,7 @@ class SimpleAtariSequenceCurriculum(tella.curriculum.InterleavedEvalCurriculum):
                     variant_label=(
                         "Checkpoint" if task_label == self.TASKS[-1] else "Default"
                     ),
-                    num_episodes=30,
+                    num_episodes=10,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
                 for task_label in self.TASKS
@@ -43,7 +43,7 @@ def construct_variants(tasks_labels, rng):
                 tella._curriculums.atari.environments.ATARI_TASKS[tasks_labels[0]],
                 task_label=tasks_labels[0],
                 variant_label="STM_Train",
-                num_steps=4_000_000,
+                num_steps=100_000,
                 rng_seed=rng.bit_generator.random_raw(),
             )
             for _ in range(20)
@@ -66,7 +66,7 @@ def construct_variants(tasks_labels, rng):
                     tella._curriculums.atari.environments.ATARI_TASKS[tasks_labels[0]],
                     task_label=tasks_labels[0],
                     variant_label="STM_Train",
-                    num_steps=4_000_000,
+                    num_steps=100_000,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
                 for _ in range(20)
@@ -76,7 +76,7 @@ def construct_variants(tasks_labels, rng):
                     tella._curriculums.atari.environments.ATARI_TASKS[task_label],
                     task_label=task_label,
                     variant_label=f"LTM_Iter_{i}",
-                    num_steps=4_000_000,
+                    num_steps=25_000,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
                 for i in range(19)
@@ -86,7 +86,7 @@ def construct_variants(tasks_labels, rng):
                     tella._curriculums.atari.environments.ATARI_TASKS[task_label],
                     task_label=task_label,
                     variant_label="LTM_Last",
-                    num_steps=4_000_000,
+                    num_steps=25_000,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
             ]

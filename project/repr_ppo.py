@@ -13,7 +13,7 @@ class RePR:
     def __init__(self, mode="stm", batch_size=32, alpha=0.5):
         self.stm_model = PPO()
         self.ltm_net = Qnet().to(device)
-        self.ltm_replay = ReplayBuffer(size=200_000)
+        self.ltm_replay = ReplayBuffer(size=100_000)
         self.gan = GAN()
         self.new_gan = GAN()
 
@@ -28,10 +28,12 @@ class RePR:
             self.ltm_net.parameters(), lr=0.00025, eps=1e-6
         )
         self.trainning = False
+        self.task = ""
         self.tasks_seen = 0
-        self.stm_loss = collections.deque(maxlen=100_000)
+        self.train_loss = collections.deque(maxlen=10_000)
         self.train_r = []
         self.train_ep_r = []
+        self.train_entropy = []
 
         self.stm_steps = 0
         self.ltm_steps = 0
@@ -43,32 +45,46 @@ class RePR:
 
     def add_transition(self, obs):
         self.env_steps += 1
+
         if self.mode == "stm":
-            self.train_r.append(obs[2])
             self.stm_model.put_data(obs)
             if self.trainning:
-                if self.env_steps % 50_000 == 0:
-                    print(
-                        f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
-                        + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}"
-                        + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
-                    )
-                    with open("terminal.txt", "a") as f:
-                        f.write(
-                            f"STM Train [{self.env_steps/1_000_000.0:.2f}M steps] |"
-                            + f" Loss:{sum(self.stm_loss)/len(self.stm_loss):.4f}\n"
-                            + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
-                        )
-                    self.train_ep_r = []
-                if obs[5] or len(self.stm_model.data) >= 500:
-                    if obs[5]:
-                        self.train_ep_r.append(sum(self.train_r))
-                        self.train_r = []
+                self.train_r.append(obs[2])
+                self.log(obs[5])
+                if obs[5] or len(self.stm_model.data) >= 1000:
                     self.train_step()
         else:
             self.ltm_replay.put(obs)
             if self.trainning:
+                self.train_r.append(obs[2])
+                self.log(obs[3])
                 self.train_step()
+
+    def log(self, end_ep):
+        if end_ep:
+            self.train_ep_r.append(sum(self.train_r))
+            self.train_r = []
+
+        if self.env_steps % 10_000 == 0:
+            entropy = ""
+            if self.mode == 'stm':
+                entropy = f" | Entropy: {sum(self.train_entropy)/len(self.train_entropy):.5f}"
+                self.train_entropy = []
+
+            print(
+                f"{self.mode} - {self.task} Train [{self.env_steps/10_000.0:.2f}M steps] |"
+                + f" Loss:{sum(self.train_loss)/len(self.train_loss):.5f}"
+                + entropy
+                + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
+            )
+            with open("terminal.txt", "a") as f:
+                f.write(
+                    f"{self.mode} - {self.task} Train [{self.env_steps/10_000.0:.2f}M steps] |"
+                    + f" Loss:{sum(self.train_loss)/len(self.train_loss):.5f}"
+                    + entropy
+                    + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}\n"
+                )
+            self.train_ep_r = []
 
     def sample_action(self, obs):
         if self.mode == "stm":
@@ -86,6 +102,8 @@ class RePR:
                 self.env_steps = 0
                 self.stm_model = PPO()
             if mode == "ltm":
+                self.train_loss.clear()
+                self.env_steps = 0
                 self.ltm_steps = 0
                 self.gan.copy_from(self.new_gan)
                 self.prev_ltm_net = Qnet().to(device)
@@ -105,8 +123,9 @@ class RePR:
             self.train_gan()
 
     def train_stm_step(self):
-        loss = self.stm_model.train_net()
-        self.stm_loss.append(loss)
+        loss, entropy = self.stm_model.train_net()
+        self.train_loss.append(loss)
+        self.train_entropy.append(entropy)
         self.stm_steps += 1
 
     def train_ltm_step(self):
@@ -115,53 +134,67 @@ class RePR:
         #    self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
         #    self.ltm_replay = deepcopy(self.stm_dqn.replay)
         # else:
-        if self.ltm_replay.size() > 1_000:
+        if self.ltm_replay.size() > 1000:
             s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
             s = s.to(device)
+            assert s.max().item() <= 1
+            assert s.min().item() >= -1
 
             with torch.no_grad():
-                stm_q_out = self.stm_model.logits(s)
-                gen_obs = self.gan.sample(self.batch_size)
-                prev_ltm_q_out_gen = self.prev_ltm_net(gen_obs)
+                stm_q_out = torch.nn.functional.softmax(self.stm_model.logits(s), dim=-1)
 
-            ltm_q_out = self.ltm_net(s)
+            ltm_q_out = torch.nn.functional.softmax(self.ltm_net(s), dim=-1)
 
             loss_curr_task = torch.nn.functional.mse_loss(ltm_q_out, stm_q_out)
 
-            ltm_q_out_gen = self.ltm_net(gen_obs)
+            if not self.first_ltm_train:
+                with torch.no_grad():
+                    gen_obs = self.gan.sample(self.batch_size)
+                    prev_ltm_q_out_gen = torch.nn.functional.softmax(self.prev_ltm_net(gen_obs), dim=-1)
 
-            loss_prev_task = torch.nn.functional.mse_loss(
-                ltm_q_out_gen, prev_ltm_q_out_gen
-            )
+                ltm_q_out_gen = torch.nn.functional.softmax(self.ltm_net(gen_obs), dim=-1)
 
-            loss = self.alpha * loss_curr_task + \
-                (1 - self.alpha) * loss_prev_task
+                loss_prev_task = torch.nn.functional.mse_loss(
+                    ltm_q_out_gen, prev_ltm_q_out_gen
+                )
+            else:
+                loss_prev_task = 0
+
+            loss = self.alpha * loss_curr_task + (1 - self.alpha) * loss_prev_task
 
             self.ltm_optimizer.zero_grad()
             loss.backward()
             self.ltm_optimizer.step()
-            print(f"LTM Train | Loss:{loss.detach().item():.8f}", end="\r")
+            self.train_loss.append(1000*loss.detach().item())
+            print(f"LTM Train | Loss:{1000*loss.detach().item():.8f}", end="\r")
 
     def train_gan(self):
-        print(
-            f"Buffer size: {self.ltm_replay.size()} - Batch: {self.batch_size}")
+        print(f"Buffer size: {self.ltm_replay.size()} - Batch: {self.batch_size}")
         avg_disc_loss = 0
         avg_gen_loss = 0
-        for i in range(200_000):
+        for i in range(5_000):
             if random.random() < 1 / self.tasks_seen:
-                real_samples = self.ltm_replay.sample(100)[0]
+                real_samples = self.ltm_replay.sample(32)[0]
             else:
-                real_samples = self.gan.sample(batch=100)
+                real_samples = self.gan.sample(batch=32)
 
             disc_loss, gen_loss = self.new_gan.train_step(real_samples)
             avg_disc_loss += disc_loss / 20
             avg_gen_loss += gen_loss / 20
             print(
-                f"GAN TRAIN [{i}/20_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
+                f"GAN TRAIN [{i}/5_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
                 end="\r",
             )
+            if (i+1) % 100 == 0:
+                with open("terminal.txt", "a") as f:
+                    f.write(
+                        f"GAN TRAIN [{i}/5_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}\n"
+                    )
+                print(
+                    f"GAN TRAIN [{i}/5_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
+                )
         print(
-            f"GAN TRAIN [20/20] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}"
+            f"GAN TRAIN [5_000/5_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}"
         )
 
     def save_checkpoint(self, dir="./logs/checkpoints/"):
