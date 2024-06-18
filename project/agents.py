@@ -88,8 +88,7 @@ class RePRAgent(tella.ContinualRLAgent):
         if self.env_steps < self.frames_per_update:
             self.curr_action = 0
             self.action_probs = 1 / 18.0
-        else:
-        #elif self.env_steps % self.frames_per_update == 0:
+        elif self.env_steps % self.frames_per_update == 0:
             # Sample new Action
             x = list(self.buffer_sample_action)
             x = np.array([x[0]] * (4 - len(x)) + x)
@@ -115,14 +114,13 @@ class RePRAgent(tella.ContinualRLAgent):
             self.buffer_observations.append(
                 (s, a, r, done, s_, self.action_probs))
 
-            if len(self.buffer_observations) >= 2:
+            if done or self.env_steps % self.frames_per_update == 0:
                 one_last_frame = self.buffer_observations[-2][-1]
                 _, action, _, done, last_frame, prob_a = self.buffer_observations[-1]
                 observation = preprocess(one_last_frame, last_frame)
                 self.prev_observation = np.array(self.buffer_sample_action)
                 self.buffer_sample_action.append(observation)
                 curr_observation = np.array(self.buffer_sample_action)
-            #if done or self.env_steps % self.frames_per_update == 0:
 
                 if self.trainning and self.prev_observation.shape[0] == 4:
                     total_r = sum(
