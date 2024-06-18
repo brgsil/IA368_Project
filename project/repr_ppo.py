@@ -31,7 +31,7 @@ class RePR:
         self.trainning = False
         self.task = ""
         self.tasks_seen = 0
-        self.train_loss = collections.deque(maxlen=10_000)
+        self.train_loss = collections.deque(maxlen=60_000)
         self.train_r = []
         self.train_ep_r = []
         self.train_entropy = []
@@ -66,21 +66,21 @@ class RePR:
             self.train_ep_r.append(sum(self.train_r))
             self.train_r = []
 
-        if self.env_steps % 10_000 == 0:
+        if self.env_steps % 60_000 == 0:
             entropy = ""
             if self.mode == 'stm':
                 entropy = f" | Entropy: {sum(self.train_entropy)/len(self.train_entropy):.5f}"
                 self.train_entropy = []
 
             print(
-                f"{self.mode} - {self.task} Train [{self.env_steps/10_000.0:.2f}M steps] |"
+                f"{self.mode} - {self.task} Train [{self.env_steps/1_000_000.0:.3f}M steps] |"
                 + f" Loss:{sum(self.train_loss)/len(self.train_loss):.5f}"
                 + entropy
                 + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
             )
             with open("terminal.txt", "a") as f:
                 f.write(
-                    f"{self.mode} - {self.task} Train [{self.env_steps/10_000.0:.2f}M steps] |"
+                    f"{self.mode} - {self.task} Train [{self.env_steps/1_000_000.0:.3f}M steps] |"
                     + f" Loss:{sum(self.train_loss)/len(self.train_loss):.5f}"
                     + entropy
                     + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}\n"

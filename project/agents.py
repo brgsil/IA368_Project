@@ -32,7 +32,7 @@ class RePRAgent(tella.ContinualRLAgent):
         )
 
         self.repr_model = RePR()
-        self.frames_per_update = 4
+        self.frames_per_update = 1
         self.env_steps = 0
         self.total_steps = 0
         self.buffer_observations = collections.deque(maxlen=4)
@@ -85,7 +85,7 @@ class RePRAgent(tella.ContinualRLAgent):
         self.logger.info(f"Start variant {variant_name}")
 
     def choose_actions(self, observations):
-        if self.env_steps < self.frames_per_update:
+        if self.env_steps < 4:
             self.curr_action = 0
             self.action_probs = 1 / 18.0
         elif self.env_steps % self.frames_per_update == 0:
@@ -114,7 +114,7 @@ class RePRAgent(tella.ContinualRLAgent):
             self.buffer_observations.append(
                 (s, a, r, done, s_, self.action_probs))
 
-            if done or self.env_steps % self.frames_per_update == 0:
+            if (done or self.env_steps % self.frames_per_update == 0) and len(self.buffer_observations) >= 2:
                 one_last_frame = self.buffer_observations[-2][-1]
                 _, action, _, done, last_frame, prob_a = self.buffer_observations[-1]
                 observation = preprocess(one_last_frame, last_frame)
