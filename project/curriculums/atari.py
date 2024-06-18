@@ -42,7 +42,7 @@ def construct_variants(tasks_labels, rng):
                 tella._curriculums.atari.environments.ATARI_TASKS[tasks_labels[0]],
                 task_label=tasks_labels[0],
                 variant_label="STM_Train",
-                num_steps=100_000,
+                num_steps=400_000,
                 rng_seed=rng.bit_generator.random_raw(),
             )
             for _ in range(20)
@@ -65,7 +65,7 @@ def construct_variants(tasks_labels, rng):
                     tella._curriculums.atari.environments.ATARI_TASKS[task_label],
                     task_label=task_label,
                     variant_label="STM_Train",
-                    num_steps=100_000,
+                    num_steps=400_000,
                     rng_seed=rng.bit_generator.random_raw(),
                 )
                 for _ in range(20)
