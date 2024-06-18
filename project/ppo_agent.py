@@ -6,7 +6,7 @@ import torch
 import cv2
 import numpy as np
 from ppo import PPO
-from curriculums.atari import SimpleAtariSequenceCurriculum
+from curriculums.atari import SimpleAtariSequenceCurriculumPPO
 
 
 def preprocess(one_last_frame, last_frame):
@@ -40,8 +40,10 @@ class PPOAgent(tella.ContinualRLAgent):
         self.losses = []
         self.train_r = []
         self.train_ep_r = []
+        self.entropy = []
         self.logger = logging.getLogger("PPO Agent")
         self.ppo_horizon = 1000
+        self.task = ""
 
     def block_start(self, is_learning_allowed):
         self.trainning = is_learning_allowed
@@ -52,8 +54,10 @@ class PPOAgent(tella.ContinualRLAgent):
 
     def task_variant_start(self, task_name, variant_name):
         self.env_steps = 0
-        self.total_steps = 0
-        self.losses = []
+        if not self.task == task_name and 'Train' in variant_name:
+            self.total_steps = 0
+            self.task = task_name
+            self.loss = []
         self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
         self.action_probs = 1 / 18.0
@@ -118,23 +122,30 @@ class PPOAgent(tella.ContinualRLAgent):
                         )
                     )
                     self.train_r.append(total_r)
-                    if done or (self.env_steps % (self.frames_per_update*self.ppo_horizon) == 0):
+                    if done:
                         self.train_ep_r.append(sum(self.train_r))
                         self.train_r = []
-                        self.losses.append(self.model.train_net())
+                    if done or (self.env_steps % (self.frames_per_update*self.ppo_horizon) == 0):
+                        l, e = self.model.train_net()
+                        self.losses.append(l)
+                        self.entropy.append(e)
 
                 # self.prev_observation = observation
 
                 if done:
                     self.env_steps = 0
 
-        if self.trainning and self.total_steps % 10_000 == 0:
-            print(
-                f"Train [{self.total_steps/4_000_000.:.2f}M] |"
-                + f"Loss {sum(self.losses)/len(self.losses):.4f}"
-                + f" | Reward {sum(self.train_ep_r)/len(self.train_ep_r):.1f}"
-            )
+        if self.trainning and (self.total_steps/self.frames_per_update) % 10_000 == 0:
+            log = f"{self.task} Train [{self.total_steps/self.frames_per_update/10_000.:.1f}M] |"+\
+                f"Loss {sum(self.losses)/len(self.losses):.4f}"+\
+                f" | Entropy: {sum(self.entropy)/len(self.entropy):.4f}" +\
+                f" | Reward {sum(self.train_ep_r)/len(self.train_ep_r):.1f}"
+            print(log)
+            with open("terminal_ppo.txt", "a") as f:
+                f.write(log + "\n")
             self.train_ep_r = []
+            self.losses = []
+            self.entropy = []
 
     def task_variant_end(self, task_name, variant_name):
         pass
@@ -150,7 +161,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     tella.rl_experiment(
         PPOAgent,
-        SimpleAtariSequenceCurriculum,
+        SimpleAtariSequenceCurriculumPPO,
         num_lifetimes=1,
         num_parallel_envs=1,
         log_dir="./logs/ppo",
