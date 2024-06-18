@@ -16,6 +16,7 @@ class RePR:
         self.ltm_replay = ReplayBuffer(size=100_000)
         self.gan = GAN()
         self.new_gan = GAN()
+        self.kkk = True
 
         assert mode in ["stm", "ltm", "gan"]
         self.mode = mode
@@ -148,6 +149,9 @@ class RePR:
             loss_curr_task = torch.nn.functional.mse_loss(ltm_q_out, stm_q_out)
 
             if not self.first_ltm_train:
+                if self.kkk:
+                    print("FIRST GAN TRANFER")
+                    self.kkk = False
                 with torch.no_grad():
                     gen_obs = self.gan.sample(self.batch_size)
                     prev_ltm_q_out_gen = torch.nn.functional.softmax(self.prev_ltm_net(gen_obs), dim=-1)
@@ -172,7 +176,8 @@ class RePR:
         print(f"Buffer size: {self.ltm_replay.size()} - Batch: {self.batch_size}")
         avg_disc_loss = 0
         avg_gen_loss = 0
-        for i in range(5_000):
+        total_iter = 10_000
+        for i in range(total_iter):
             if random.random() < 1 / self.tasks_seen:
                 real_samples = self.ltm_replay.sample(32)[0]
             else:
@@ -182,19 +187,19 @@ class RePR:
             avg_disc_loss += disc_loss / 20
             avg_gen_loss += gen_loss / 20
             print(
-                f"GAN TRAIN [{i}/5_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
+                f"GAN TRAIN [{i}/{total_iter}] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
                 end="\r",
             )
             if (i+1) % 100 == 0:
                 with open("terminal.txt", "a") as f:
                     f.write(
-                        f"GAN TRAIN [{i}/5_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}\n"
+                        f"GAN TRAIN [{i}/{total_iter}] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}\n"
                     )
                 print(
-                    f"GAN TRAIN [{i}/5_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
+                    f"GAN TRAIN [{i}/{total_iter}] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}",
                 )
         print(
-            f"GAN TRAIN [5_000/5_000] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}"
+            f"GAN TRAIN [{total_iter}/{total_iter}] | Disc: {avg_disc_loss:.4f} - Gen: {avg_gen_loss:.4f}"
         )
 
     def save_checkpoint(self, dir="./logs/checkpoints/"):
