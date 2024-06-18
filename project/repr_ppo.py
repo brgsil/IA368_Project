@@ -31,7 +31,7 @@ class RePR:
         self.trainning = False
         self.task = ""
         self.tasks_seen = 0
-        self.train_loss = collections.deque(maxlen=60_000)
+        self.train_loss = collections.deque(maxlen=20_000)
         self.train_r = []
         self.train_ep_r = []
         self.train_entropy = []
@@ -66,7 +66,7 @@ class RePR:
             self.train_ep_r.append(sum(self.train_r))
             self.train_r = []
 
-        if self.env_steps % 60_000 == 0:
+        if self.env_steps % 20_000 == 0:
             entropy = ""
             if self.mode == 'stm':
                 entropy = f" | Entropy: {sum(self.train_entropy)/len(self.train_entropy):.5f}"
