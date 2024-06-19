@@ -41,14 +41,15 @@ class RePRAgent(tella.ContinualRLAgent):
             rng_seed, observation_space, action_space, num_envs, config_file
         )
 
-        self.repr_model = RePR()
+        self.action_space = 4
+        self.repr_model = RePR(action_space=self.action_space)
         self.frames_per_update = 1
         self.env_steps = 0
         self.total_steps = 0
         self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
         self.prev_observation = np.zeros((4, 84, 84))
-        self.action_probs = 1 / 18.0
+        self.action_probs = 1. / self.action_space
         self.trainning = False
         self.first_ltm_train = True
 
@@ -74,7 +75,7 @@ class RePRAgent(tella.ContinualRLAgent):
         self.repr_model.task = task_name
         self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
-        self.action_probs = 1 / 18.0
+        self.action_probs = 1 / self.action_space
         self.curr_task = task_name
 
         if "Checkpoint" in variant_name:
@@ -111,17 +112,19 @@ class RePRAgent(tella.ContinualRLAgent):
         # x = list(self.buffer_sample_action)
         # x = np.array([x[0]] * (4 - len(x)) + x)
         # x = 2 * x / 255.0 - 1
-        if isinstance(observations, np.ndarray):
-            x = torch.from_numpy(observations).float().unsqueeze(0)
-            x = 2 * x / 255.0 - 1
-            assert x.shape == (1, 4, 84, 84)
-            with torch.no_grad():
-                if self.repr_model.mode == "stm":
-                    self.curr_action, self.action_probs = self.repr_model.sample_action(
-                        x
-                    )
-                else:
-                    self.curr_action = self.repr_model.sample_action(x)
+        if isinstance(observations[0][:], np.ndarray):
+            x = observations[0][:].squeeze()
+            if (x.shape[0] == 4):
+                x = torch.from_numpy(x).float().unsqueeze(0)
+                x = 2 * x / 255.0 - 1
+                assert x.shape == (1, 4, 84, 84), f"Actual: {print(x.shape)}"
+                with torch.no_grad():
+                    if self.repr_model.mode == "stm":
+                        self.curr_action, self.action_probs = self.repr_model.sample_action(
+                            x
+                        )
+                    else:
+                        self.curr_action = self.repr_model.sample_action(x)
 
         self.env_steps += 1
         self.total_steps += 1
