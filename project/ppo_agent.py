@@ -45,6 +45,7 @@ class PPOAgent(tella.ContinualRLAgent):
         self.ppo_horizon = 1000
         self.task = ""
         self.test_video = {}
+        self.curr_task = ""
         self.prev_obs_is_done = False
 
     def block_start(self, is_learning_allowed):
@@ -60,6 +61,7 @@ class PPOAgent(tella.ContinualRLAgent):
             self.total_steps = 0
             self.task = task_name
             self.loss = []
+        self.curr_task = task_name
         self.buffer_observations = collections.deque(maxlen=4)
         self.buffer_sample_action = collections.deque(maxlen=4)
         self.action_probs = 1 / 18.0
@@ -147,14 +149,7 @@ class PPOAgent(tella.ContinualRLAgent):
                 if done:
                     self.env_steps = 0
 
-        if self.trainning and (self.total_steps/self.frames_per_update) % 60_000 == 0:
-            if not self.trainning:
-                frames = self.test_video[task_name]
-                out = cv2.VideoWriter(f"outputPPO_{task_name}.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 10, (160,250))
-                for frame in frames:
-                    out.write(frame)
-                out.release()
-
+        if self.trainning and (self.total_steps/self.frames_per_update) % 20_000 == 0:
             log = f"{self.task} Train [{self.total_steps/self.frames_per_update/1_000_000.:.2f}M] |"+\
                 f"Loss {sum(self.losses)/len(self.losses):.4f}"+\
                 f" | Entropy: {sum(self.entropy)/len(self.entropy):.4f}" +\
@@ -167,7 +162,12 @@ class PPOAgent(tella.ContinualRLAgent):
             self.entropy = []
 
     def task_variant_end(self, task_name, variant_name):
-        pass
+        if not self.trainning:
+            frames = self.test_video[task_name]
+            out = cv2.VideoWriter(f"outputPPO_{task_name}.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 10, (160,250))
+            for frame in frames:
+                out.write(frame)
+            out.release()
 
     def task_end(self, task_name):
         pass
