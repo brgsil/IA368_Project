@@ -166,7 +166,7 @@ class RePRAgent(tella.ContinualRLAgent):
                             (
                                 s,
                                 a,
-                                r,
+                                r/100.,
                                 s_,
                                 self.action_probs,
                                 done,
@@ -177,7 +177,7 @@ class RePRAgent(tella.ContinualRLAgent):
                             (
                                 s,
                                 a,
-                                r,
+                                r/100.,
                                 done,
                                 s_,
                             )

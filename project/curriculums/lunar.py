@@ -113,7 +113,7 @@ class LunarCurriculum(InterleavedEvalCurriculum):
                             task_label=f"Lunar-Env-{i}",
                             variant_label="PPO_Train",
                             num_steps=10_000,
-                            rng_seed=4321,
+                            rng_seed=1234,
                         )
                         for _ in range(2000)
                     ]

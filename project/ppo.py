@@ -9,8 +9,8 @@ from torch.distributions import Categorical
 # Hyperparameters
 learning_rate = 1e-4
 gamma = 0.99
-lmbda = 0.95
-eps_clip = 0.1
+lmbda = 0.97
+eps_clip = 0.2
 K_epoch = 1
 
 

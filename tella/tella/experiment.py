@@ -38,7 +38,8 @@ from .curriculum import (
 
 logger = logging.getLogger(__name__)
 
-AgentFactory = typing.Callable[[int, gym.Space, gym.Space, int, str], ContinualRLAgent]
+AgentFactory = typing.Callable[[int, gym.Space,
+                                gym.Space, int, str], ContinualRLAgent]
 """
 AgentFactory is a function or class that returns a 
 :class:`ContinualRLAgent <tella.agents.ContinualRLAgent>`.
@@ -72,7 +73,8 @@ A function can also be used as an AgentFactory::
 
 """
 
-CurriculumFactory = typing.Callable[[int, typing.Optional[str]], AbstractCurriculum]
+CurriculumFactory = typing.Callable[[
+    int, typing.Optional[str]], AbstractCurriculum]
 """
 CurriculumFactory is a function or class that returns an 
 :class:`AbstractCurriculum <tella.curriculum.AbstractCurriculum>`.
@@ -151,7 +153,8 @@ def rl_experiment(
     logger.info(f"Experiment RNG seed for agents: {agent_seed}")
     agent_rng = np.random.default_rng(agent_seed)
     if curriculum_seed is None:
-        logger.info("No curriculum seed provided; one will be generated randomly.")
+        logger.info(
+            "No curriculum seed provided; one will be generated randomly.")
         curriculum_seed = np.random.default_rng().bit_generator.random_raw()
     logger.info(f"Experiment RNG seed for curriculums: {curriculum_seed}")
     curriculum_rng = np.random.default_rng(curriculum_seed)
@@ -166,11 +169,13 @@ def rl_experiment(
 
     # FIXME: multiprocessing https://github.com/darpa-l2m/tella/issues/44
     for i_lifetime in range(lifetime_idx, lifetime_idx + num_lifetimes):
-        logger.info(f"Starting lifetime #{i_lifetime + 1} (lifetime_idx={i_lifetime})")
+        logger.info(
+            f"Starting lifetime #{i_lifetime + 1} (lifetime_idx={i_lifetime})")
 
         curriculum_seed = curriculum_rng.bit_generator.random_raw()
         curriculum = curriculum_factory(curriculum_seed, curriculum_config)
-        logger.info(f"Constructed curriculum {curriculum} with seed {curriculum_seed}")
+        logger.info(
+            f"Constructed curriculum {curriculum} with seed {curriculum_seed}")
 
         # FIXME: check for RL task variant https://github.com/darpa-l2m/tella/issues/53
         validate_curriculum(curriculum.copy())
@@ -346,7 +351,8 @@ class L2Logger:
 
 
 ActionFn = typing.Callable[
-    [typing.List[typing.Optional[Observation]]], typing.List[typing.Optional[Action]]
+    [typing.List[typing.Optional[Observation]]
+     ], typing.List[typing.Optional[Action]]
 ]
 """
 A function that takes a list of Observations and returns a list of Actions, one
@@ -422,21 +428,23 @@ def generate_transitions(
 
         # step in the VectorEnv
         if num_envs == 1:
-            next_observations, rewards, dones, infos = env.step(unmasked_actions[0])
+            next_observations, rewards, dones, infos = env.step(
+                unmasked_actions[0])
             next_observations = [next_observations]
             rewards = [rewards]
             dones = [dones]
             infos = [infos]
         else:
-            next_observations, rewards, dones, infos = env.step(unmasked_actions)
+            next_observations, rewards, dones, infos = env.step(
+                unmasked_actions)
         if render:
             env.render()
 
         # yield all the transitions of this step
-        #resulting_obs = [
+        # resulting_obs = [
         #    info["terminal_observation"] if done else next_obs
         #    for info, done, next_obs in zip(infos, dones, next_observations)
-        #]
+        # ]
         resulting_obs = next_observations
         unmasked_transitions = [
             Transition(*values)
@@ -463,7 +471,10 @@ def generate_transitions(
 
         if num_envs == 1:
             if dones[0]:
-                env.reset()
+                env = task_variant.make_env()
+                env.seed(task_variant.rng_seed)
+                o = env.reset()
+                observations = [o[0]]
 
     env.close()
     del env
@@ -480,9 +491,11 @@ def hide_rewards(
     :return: The new list of transitions with all rewards set to None
     """
     return [
-        None
-        if t is None
-        else Transition(t.observation, t.action, None, t.done, t.next_observation)
+        (
+            None
+            if t is None
+            else Transition(t.observation, t.action, None, t.done, t.next_observation)
+        )
         for t in transitions
     ]
 
