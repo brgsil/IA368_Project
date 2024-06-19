@@ -10,7 +10,7 @@ from torch.distributions import Categorical
 learning_rate = 1e-4
 gamma = 0.99
 lmbda = 0.95
-eps_clip = 0.15
+eps_clip = 0.1
 K_epoch = 1
 
 
@@ -122,7 +122,7 @@ class PPO(nn.Module):
 
             surr1 = ratio * advantage
             surr2 = torch.clamp(ratio, 1 - eps_clip, 1 + eps_clip) * advantage
-            loss = -torch.min(surr1, surr2) + 0.5 * F.smooth_l1_loss(
+            loss = -torch.min(surr1, surr2) + F.smooth_l1_loss(
                 self.v(s), td_target.detach()
             ) - 0.001 * entropy
 

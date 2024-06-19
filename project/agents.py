@@ -23,6 +23,14 @@ def preprocess(one_last_frame, last_frame):
     return x
 
 
+def preprocess2(last_frame):
+    x = last_frame.astype(np.uint8)
+    x = cv2.cvtColor(x, cv2.COLOR_RGB2GRAY)
+    x = cv2.resize(x, (84, 84), interpolation=cv2.INTER_LINEAR)
+    # return (x / 255.) * 2 - 1
+    return x
+
+
 class RePRAgent(tella.ContinualRLAgent):
     def __init__(
         self, rng_seed, observation_space, action_space, num_envs, config_file
@@ -32,7 +40,7 @@ class RePRAgent(tella.ContinualRLAgent):
         )
 
         self.repr_model = RePR()
-        self.frames_per_update = 2
+        self.frames_per_update = 1
         self.env_steps = 0
         self.total_steps = 0
         self.buffer_observations = collections.deque(maxlen=4)
@@ -102,9 +110,10 @@ class RePRAgent(tella.ContinualRLAgent):
             x = 2 * x / 255.0 - 1
             x = torch.from_numpy(x).float().unsqueeze(0)
             with torch.no_grad():
-                if self.repr_model.mode == 'stm':
+                if self.repr_model.mode == "stm":
                     self.curr_action, self.action_probs = self.repr_model.sample_action(
-                    x)
+                        x
+                    )
                 else:
                     self.curr_action = self.repr_model.sample_action(x)
 
@@ -118,28 +127,29 @@ class RePRAgent(tella.ContinualRLAgent):
         # self.logger.info(f"Receiving transition - Step {self.env_steps}")
         if transitions[0] is not None:
             s, a, r, done, s_ = transitions[0]
-            self.buffer_observations.append(
-                (s, a, r, done, s_, self.action_probs))
+            self.buffer_observations.append((s, a, r, done, s_, self.action_probs))
 
-            if (done or self.env_steps % self.frames_per_update == 0) and len(self.buffer_observations) >= 2:
-                if not self.trainning:
-                    if self.prev_obs_is_done:
-                        self.test_video[self.curr_task] = []
+            if not self.trainning:
+                if self.prev_obs_is_done:
+                    self.test_video[self.curr_task] = []
 
-                    self.test_video[self.curr_task].append(s)
-                    self.prev_obs_is_done = done
+                self.test_video[self.curr_task].append(s)
+                self.prev_obs_is_done = done
 
-                one_last_frame = self.buffer_observations[-2][-1]
+            if (done or self.env_steps % self.frames_per_update == 0) \
+                    and len(self.buffer_observations) >= 1:
+
+                # one_last_frame = self.buffer_observations[-2][-2]
                 _, action, _, done, last_frame, prob_a = self.buffer_observations[-1]
-                observation = preprocess(one_last_frame, last_frame)
+                # observation = preprocess(one_last_frame, last_frame)
+                observation = preprocess2(last_frame)
                 self.prev_observation = np.array(self.buffer_sample_action)
                 self.buffer_sample_action.append(observation)
                 curr_observation = np.array(self.buffer_sample_action)
 
                 if self.trainning and self.prev_observation.shape[0] == 4:
-                    total_r = sum(
-                        [r for _, _, r, _, _, _ in self.buffer_observations])
-                    if self.repr_model.mode == 'stm':
+                    total_r = sum([r for _, _, r, _, _, _ in self.buffer_observations])
+                    if self.repr_model.mode == "stm":
                         self.repr_model.add_transition(
                             (
                                 self.prev_observation,
@@ -167,7 +177,13 @@ class RePRAgent(tella.ContinualRLAgent):
     def task_variant_end(self, task_name, variant_name):
         if not self.trainning:
             frames = self.test_video[task_name]
-            out = cv2.VideoWriter(f"output_{task_name}.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 10, (160,250))
+            out = cv2.VideoWriter(
+                f"output_{task_name}.mp4",
+                cv2.VideoWriter_fourcc(*"mp4v"),
+                10,
+                (84, 84),
+                False,
+            )
             for frame in frames:
                 out.write(frame)
             out.release()
