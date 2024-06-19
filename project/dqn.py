@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torch.distributions import Categorical
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -123,6 +124,7 @@ class DQN:
         )
         self.step_count = 0
         self.last_loss = 0
+        self.last_entropy = Categorical(torch.tensor([1./action_space] * action_space)).entropy().item()
         self.action_space = action_space
 
         self.train = train
@@ -167,12 +169,13 @@ class DQN:
                     target = r + self.gamma * max_q_prime * done_mask
 
                 q_out = self.q_net(s)
+                self.last_entropy = Categorical(logits=q_out).entropy().mean().detach().item()
                 q_a = q_out.gather(1, a)
-                loss = -F.smooth_l1_loss(q_a, target)
+                loss = F.smooth_l1_loss(q_a, target)
 
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
                 self.last_loss = loss.detach().item()
 
-        return self.last_loss
+        return self.last_loss, self.last_entropy
