@@ -10,9 +10,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class RePR:
-    def __init__(self, mode="stm", batch_size=32, alpha=0.5):
-        self.stm_model = PPO()
-        self.ltm_net = Qnet().to(device)
+    def __init__(self, mode="stm", batch_size=32, alpha=0.5, action_space=18):
+        self.stm_model = PPO(action_space=action_space)
+        self.ltm_net = Qnet(action_space=action_space).to(device)
         self.ltm_replay = ReplayBuffer(size=150_000)
         self.gan = GAN()
         self.new_gan = GAN()
@@ -66,7 +66,7 @@ class RePR:
             self.train_ep_r.append(sum(self.train_r))
             self.train_r = []
 
-        if self.env_steps % 20_000 == 0:
+        if self.env_steps % 1_000 == 0:
             entropy = ""
             if self.mode == 'stm':
                 entropy = f" | Entropy: {sum(self.train_entropy)/len(self.train_entropy):.5f}"

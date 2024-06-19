@@ -8,7 +8,9 @@ import numpy as np
 
 # from repr import RePR
 from repr_ppo import RePR
-from curriculums.atari import SimpleAtariSequenceCurriculum
+
+# from curriculums.atari import SimpleAtariSequenceCurriculum
+from curriculums.lunar import LunarCurriculum
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"##### DEVICE: {device}")
@@ -55,6 +57,7 @@ class RePRAgent(tella.ContinualRLAgent):
         self.test_video = {}
         self.curr_task = ""
         self.prev_obs_is_done = False
+        self.curr_action = 0
 
     def block_start(self, is_learning_allowed):
         self.trainning = is_learning_allowed
@@ -100,15 +103,18 @@ class RePRAgent(tella.ContinualRLAgent):
         self.logger.info(f"Start variant {variant_name}")
 
     def choose_actions(self, observations):
-        if self.env_steps < 4:
-            self.curr_action = 0
-            self.action_probs = 1 / 18.0
-        elif self.env_steps % self.frames_per_update == 0:
-            # Sample new Action
-            x = list(self.buffer_sample_action)
-            x = np.array([x[0]] * (4 - len(x)) + x)
+        # if self.env_steps < 4:
+        #    self.curr_action = 0
+        #    self.action_probs = 1 / 18.0
+        # elif self.env_steps % self.frames_per_update == 0:
+        # Sample new Action
+        # x = list(self.buffer_sample_action)
+        # x = np.array([x[0]] * (4 - len(x)) + x)
+        # x = 2 * x / 255.0 - 1
+        if isinstance(observations, np.ndarray):
+            x = torch.from_numpy(observations).float().unsqueeze(0)
             x = 2 * x / 255.0 - 1
-            x = torch.from_numpy(x).float().unsqueeze(0)
+            assert x.shape == (1, 4, 84, 84)
             with torch.no_grad():
                 if self.repr_model.mode == "stm":
                     self.curr_action, self.action_probs = self.repr_model.sample_action(
@@ -127,52 +133,55 @@ class RePRAgent(tella.ContinualRLAgent):
         # self.logger.info(f"Receiving transition - Step {self.env_steps}")
         if transitions[0] is not None:
             s, a, r, done, s_ = transitions[0]
-            self.buffer_observations.append((s, a, r, done, s_, self.action_probs))
+            s = s[:].squeeze()
+            s_ = s_[:].squeeze()
+            # self.buffer_observations.append((s, a, r, done, s_, self.action_probs))
 
             if not self.trainning:
                 if self.prev_obs_is_done:
                     self.test_video[self.curr_task] = []
 
-                self.test_video[self.curr_task].append(s)
+                self.test_video[self.curr_task].append(s[-1])
                 self.prev_obs_is_done = done
 
-            if (done or self.env_steps % self.frames_per_update == 0) \
-                    and len(self.buffer_observations) >= 1:
+            # if (done or self.env_steps % self.frames_per_update == 0) \
+            #        and len(self.buffer_observations) >= 1:
 
-                # one_last_frame = self.buffer_observations[-2][-2]
-                _, action, _, done, last_frame, prob_a = self.buffer_observations[-1]
-                # observation = preprocess(one_last_frame, last_frame)
-                observation = preprocess2(last_frame)
-                self.prev_observation = np.array(self.buffer_sample_action)
-                self.buffer_sample_action.append(observation)
-                curr_observation = np.array(self.buffer_sample_action)
+            # one_last_frame = self.buffer_observations[-2][-2]
+            # _, action, _, done, last_frame, prob_a = self.buffer_observations[-1]
+            # observation = preprocess(one_last_frame, last_frame)
+            # observation = preprocess2(last_frame)
+            # self.prev_observation = np.array(self.buffer_sample_action)
+            # self.buffer_sample_action.append(observation)
+            # curr_observation = np.array(self.buffer_sample_action)
 
-                if self.trainning and self.prev_observation.shape[0] == 4:
-                    total_r = sum([r for _, _, r, _, _, _ in self.buffer_observations])
+            # if self.trainning and self.prev_observation.shape[0] == 4:
+            if self.trainning:
+                if s.shape == (4, 84, 84):
                     if self.repr_model.mode == "stm":
                         self.repr_model.add_transition(
                             (
-                                self.prev_observation,
-                                action,
-                                total_r,
-                                curr_observation,
-                                prob_a,
+                                s,
+                                a,
+                                r,
+                                s_,
+                                self.action_probs,
                                 done,
                             )
                         )
                     else:
                         self.repr_model.add_transition(
                             (
-                                self.prev_observation,
-                                action,
-                                total_r,
+                                s,
+                                a,
+                                r,
                                 done,
-                                curr_observation,
+                                s_,
                             )
                         )
 
-                if done:
-                    self.env_steps = 0
+            if done:
+                self.env_steps = 0
 
     def task_variant_end(self, task_name, variant_name):
         if not self.trainning:
@@ -205,7 +214,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     tella.rl_experiment(
         RePRAgent,
-        SimpleAtariSequenceCurriculum,
+        LunarCurriculum,
         num_lifetimes=1,
         num_parallel_envs=1,
         log_dir="./logs",
