@@ -112,10 +112,10 @@ class LunarCurriculum(InterleavedEvalCurriculum):
                             LUNAR_ENVS[i],
                             task_label=f"Lunar-Env-{i}",
                             variant_label="PPO_Train",
-                            num_steps=400_000,
+                            num_steps=10_000,
                             rng_seed=4321,
                         )
-                        for _ in range(20)
+                        for _ in range(2000)
                     ]
             for block in split_learn_block_per_task_variant(variants):
                 yield block

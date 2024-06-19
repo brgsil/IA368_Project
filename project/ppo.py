@@ -19,7 +19,20 @@ class PPO(nn.Module):
         super(PPO, self).__init__()
         self.data = []
 
-        self.features = nn.Sequential(
+        #self.features = nn.Sequential(
+        #    nn.Conv2d(4, 32, (8, 8), stride=(4, 4)),
+        #    nn.ReLU(),
+        #    nn.Conv2d(32, 64, (4, 4), stride=(2, 2)),
+        #    nn.ReLU(),
+        #    nn.Conv2d(64, 64, (3, 3)),
+        #    nn.ReLU(),
+        #    nn.Flatten(),
+        #    nn.Linear(7 * 7 * 64, 512),
+        #    nn.ReLU()
+        #)
+
+        #self.fc_pi = nn.Linear(512, action_space)
+        self.fc_pi = nn.Sequential(
             nn.Conv2d(4, 32, (8, 8), stride=(4, 4)),
             nn.ReLU(),
             nn.Conv2d(32, 64, (4, 4), stride=(2, 2)),
@@ -28,16 +41,30 @@ class PPO(nn.Module):
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(7 * 7 * 64, 512),
+            nn.ReLU(),
+            nn.Linear(512, action_space),
+        )
+        #self.fc_v = nn.Linear(512, 1)
+        self.fc_v = nn.Sequential(
+            nn.Conv2d(4, 32, (8, 8), stride=(4, 4)),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, (4, 4), stride=(2, 2)),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, (3, 3)),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(7 * 7 * 64, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+
         )
 
-        self.fc_pi = nn.Linear(512, action_space)
-        self.fc_v = nn.Linear(512, 1)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def pi(self, x, softmax_dim=-1):
         assert x.max().item() <= 1, f"Obs max is {x.max()}"
         assert x.min().item() >= -1, f"Obs min is {x.min()}"
-        x = F.relu(self.features(x))
+        #x = F.relu(self.features(x))
         x = self.fc_pi(x)
         prob = F.softmax(x, dim=softmax_dim)
         return prob
@@ -45,12 +72,13 @@ class PPO(nn.Module):
     def logits(self, x):
         assert x.max().item() <= 1, f"Obs max is {x.max()}"
         assert x.min().item() >= -1, f"Obs min is {x.min()}"
-        return self.fc_pi(F.relu(self.features(x)))
+        #return self.fc_pi(F.relu(self.features(x)))
+        return self.fc_pi(x)
 
     def v(self, x):
         assert x.max().item() <= 1, f"Obs max is {x.max()}"
         assert x.min().item() >= -1, f"Obs min is {x.min()}"
-        x = F.relu(self.features(x))
+        #x = F.relu(self.features(x))
         v = self.fc_v(x)
         return v
 
@@ -122,7 +150,7 @@ class PPO(nn.Module):
 
             surr1 = ratio * advantage
             surr2 = torch.clamp(ratio, 1 - eps_clip, 1 + eps_clip) * advantage
-            loss = -torch.min(surr1, surr2) + F.smooth_l1_loss(
+            loss = -torch.min(surr1, surr2).mean() + 0.5*F.smooth_l1_loss(
                 self.v(s), td_target.detach()
             ) - 0.001 * entropy
 
@@ -136,7 +164,7 @@ class PPO(nn.Module):
     def save_checkpoint(self, dir):
         torch.save(
             {
-                "features_model": self.features.state_dict(),
+                #"features_model": self.features.state_dict(),
                 "pi_mode": self.fc_pi.state_dict(),
                 "v_model": self.fc_v.state_dict(),
                 "optim": self.optimizer.state_dict(),
