@@ -38,15 +38,42 @@ class ReplayBuffer:
             done_mask_lst.append([0 if done_mask else 1])
 
         return (
-            2 * torch.from_numpy(np.array(s_lst)).float() / 255.0 - 1,
+            torch.from_numpy(np.array(s_lst)).float(),
             torch.tensor(a_lst),
             torch.tensor(r_lst),
-            2 * torch.from_numpy(np.array(s_prime_lst)).float() / 255.0 - 1,
+            torch.from_numpy(np.array(s_prime_lst)).float(),
             torch.tensor(done_mask_lst),
         )
 
     def size(self):
         return len(self.buffer)
+
+
+class LinearQnet(nn.Module):
+    def __init__(self, action_space=18):
+        super(LinearQnet, self).__init__()
+        self.action_space = action_space
+        self.net = nn.Sequential(
+            nn.Linear(8, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, action_space),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+    def sample_action(self, x, epsilon=0.1, mode="train"):
+        if mode == "eval":
+            epsilon = 0.0
+
+        coin = random.random()
+        if coin < epsilon:
+            return random.randint(0, self.action_space - 1)
+        else:
+            probs = self(x)
+            return probs.argmax().item()
 
 
 class Qnet(nn.Module):
@@ -124,12 +151,17 @@ class DQN:
         )
         self.step_count = 0
         self.last_loss = 0
-        self.last_entropy = Categorical(torch.tensor([1./action_space] * action_space)).entropy().item()
+        self.last_entropy = (
+            Categorical(torch.tensor([1.0 / action_space] * action_space))
+            .entropy()
+            .item()
+        )
         self.action_space = action_space
 
         self.train = train
         self.gamma = gamma
-        self.optimizer = optim.RMSprop(self.q_net.parameters(), lr=lr, eps=1e-6)
+        self.optimizer = optim.RMSprop(
+            self.q_net.parameters(), lr=lr, eps=1e-6)
 
     def sample_action(self, obs):
         obs = obs.to(device)
@@ -157,7 +189,8 @@ class DQN:
                 self.q_target.load_state_dict(self.q_net.state_dict())
 
             if self.step_count % self.update_freq == 0:
-                s, a, r, s_prime, done_mask = self.replay.sample(self.batch_size)
+                s, a, r, s_prime, done_mask = self.replay.sample(
+                    self.batch_size)
                 s = s.to(device)
                 a = a.to(device)
                 r = r.to(device)
@@ -169,7 +202,9 @@ class DQN:
                     target = r + self.gamma * max_q_prime * done_mask
 
                 q_out = self.q_net(s)
-                self.last_entropy = Categorical(logits=q_out).entropy().mean().detach().item()
+                self.last_entropy = (
+                    Categorical(logits=q_out).entropy().mean().detach().item()
+                )
                 q_a = q_out.gather(1, a)
                 loss = F.smooth_l1_loss(q_a, target)
 

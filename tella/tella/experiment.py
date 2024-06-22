@@ -463,7 +463,7 @@ def generate_transitions(
 
         if num_envs == 1:
             if dones[0]:
-                env.reset()
+                env.reset(seed=task_variant.rng_seed)
 
     env.close()
     del env
