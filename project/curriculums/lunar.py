@@ -1,5 +1,6 @@
 import gym
 from gym.wrappers.pixel_observation import PixelObservationWrapper
+from copy import copy
 
 
 import tella
@@ -11,10 +12,7 @@ class LunarLanderConstructor:
         self.params = params
 
     def __call__(self):
-        return PixelObservationWrapper(
-            gym.make("LunarLander-v2", render_mode="rgb_array", **self.params),
-            pixels_only=False,
-        )
+        return gym.make("LunarLander-v2", **self.params)
 
 
 LUNAR_ENVS = [
@@ -104,20 +102,21 @@ LUNAR_ENVS = [
 class LunarCurriculum(InterleavedEvalCurriculum):
 
     def eval_block(self):
+        variants = []
         return tella.curriculum.simple_eval_block(
-            [
-                tella.curriculum.TaskVariant(
-                    LUNAR_ENVS[i],
-                    task_label=f"Lunar-Env-{i}",
-                    variant_label=(
-                        "Checkpoint" if i == len(LUNAR_ENVS) - 1 else "Default"
-                    ),
-                    num_episodes=20,
-                    rng_seed=1234,
-                )
-                for i in range(len(LUNAR_ENVS))
-            ]
-        )
+                [
+                    tella.curriculum.TaskVariant(
+                        LUNAR_ENVS[i],
+                        task_label=f"Lunar-Env-{i}",
+                        variant_label=(
+                            "Checkpoint" if i == len(LUNAR_ENVS) - 1 else "Default"
+                        ),
+                        num_episodes=20,
+                        rng_seed=1234,
+                    )
+                    for i in range(len(LUNAR_ENVS))
+                ]
+            )
 
     def learn_blocks(self):
         for i in range(len(LUNAR_ENVS)):

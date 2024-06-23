@@ -73,10 +73,12 @@ class RePRAgent(tella.ContinualRLAgent):
 
     def choose_actions(self, observations):
         # Sample new Action
-        if isinstance(observations[0]['state'], np.ndarray):
-            x = observations[0]['state'].squeeze()
+        x = observations[0]
+        if isinstance(x, np.ndarray):
+            x = x.squeeze()
             if (x.shape[0] == 8):
                 x = torch.from_numpy(x).float().unsqueeze(0)
+                assert x.shape == (1,8), f"Actual shape {x.shape}"
                 with torch.no_grad():
                     self.curr_action = self.repr_model.sample_action(x)
 
@@ -93,22 +95,22 @@ class RePRAgent(tella.ContinualRLAgent):
                     self.test_ep_r.append(self.test_r)
                     self.test_r = 0
 
-                if self.prev_obs_is_done:
-                    self.test_video = []
+                #if self.prev_obs_is_done:
+                #    self.test_video = []
 
-                self.test_video.append(s['pixels'][0])
-                self.prev_obs_is_done = done
+                #self.test_video.append(s['pixels'][0])
+                #self.prev_obs_is_done = done
 
             if self.trainning:
-                assert s['state'].shape == (8,)
-                assert s_['state'].shape == (8,)
+                assert s.shape == (8,)
+                assert s_.shape == (8,)
                 self.repr_model.add_transition(
                     (
-                        s['state'],
+                        s,
                         a,
                         r/100.,
                         done,
-                        s_['state'],
+                        s_,
                     )
                 )
 
@@ -118,16 +120,16 @@ class RePRAgent(tella.ContinualRLAgent):
                 f.write(f"{self.repr_model.mode} | {self.train_task} - {self.repr_model.task} | {sum(self.test_ep_r)/len(self.test_ep_r):.2f}\n")
             self.test_ep_r = []
 
-            frames = self.test_video
-            out = cv2.VideoWriter(
-                f"output_dqn_{task_name}.mp4",
-                cv2.VideoWriter_fourcc(*"mp4v"),
-                10,
-                (600, 400),
-            )
-            for frame in frames:
-                out.write(frame)
-            out.release()
+            #frames = self.test_video
+            #out = cv2.VideoWriter(
+            #    f"output_dqn_{task_name}.mp4",
+            #    cv2.VideoWriter_fourcc(*"mp4v"),
+            #    10,
+            #    (600, 400),
+            #)
+            #for frame in frames:
+            #    out.write(frame)
+            #out.release()
 
         if self.trainning:
             if "Last" in variant_name:

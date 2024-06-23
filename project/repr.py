@@ -32,7 +32,7 @@ class RePR:
         self.trainning = False
         self.task = ""
         self.tasks_seen = 0
-        self.train_loss = collections.deque(maxlen=20_000)
+        self.train_loss = collections.deque(maxlen=2_000)
         self.train_r = []
         self.train_ep_r = []
         self.train_entropy = []
