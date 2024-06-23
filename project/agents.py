@@ -3,34 +3,15 @@ import os
 import logging
 import tella
 import torch
-import cv2
 import numpy as np
 
 # from repr import RePR
 from repr_ppo import RePR
 
-# from curriculums.atari import SimpleAtariSequenceCurriculum
 from curriculums.lunar import LunarCurriculum
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"##### DEVICE: {device}")
-
-
-def preprocess(one_last_frame, last_frame):
-    x = np.maximum(one_last_frame, last_frame)
-    x = x.astype(np.uint8)
-    x = cv2.cvtColor(x, cv2.COLOR_RGB2GRAY)
-    x = cv2.resize(x, (84, 84), interpolation=cv2.INTER_LINEAR)
-    # return (x / 255.) * 2 - 1
-    return x
-
-
-def preprocess2(last_frame):
-    x = last_frame.astype(np.uint8)
-    x = cv2.cvtColor(x, cv2.COLOR_RGB2GRAY)
-    x = cv2.resize(x, (84, 84), interpolation=cv2.INTER_LINEAR)
-    # return (x / 255.) * 2 - 1
-    return x
 
 
 class RePRAgent(tella.ContinualRLAgent):
@@ -43,12 +24,8 @@ class RePRAgent(tella.ContinualRLAgent):
 
         self.action_space = 4
         self.repr_model = RePR(action_space=self.action_space)
-        self.frames_per_update = 1
         self.env_steps = 0
         self.total_steps = 0
-        self.buffer_observations = collections.deque(maxlen=4)
-        self.buffer_sample_action = collections.deque(maxlen=4)
-        self.prev_observation = np.zeros((4, 84, 84))
         self.action_probs = 1. / self.action_space
         self.trainning = False
         self.first_ltm_train = True
@@ -114,8 +91,8 @@ class RePRAgent(tella.ContinualRLAgent):
         # x = list(self.buffer_sample_action)
         # x = np.array([x[0]] * (4 - len(x)) + x)
         # x = 2 * x / 255.0 - 1
-        if isinstance(observations[0], np.ndarray):
-            x = observations[0].squeeze()
+        if isinstance(observations[0]['state'], np.ndarray):
+            x = observations[0]['state'].squeeze()
             if (x.shape[0] == 8):
                 x = torch.from_numpy(x).float().unsqueeze(0)
                 #x = 2 * x / 255.0 - 1
@@ -138,18 +115,18 @@ class RePRAgent(tella.ContinualRLAgent):
         # self.logger.info(f"Receiving transition - Step {self.env_steps}")
         if transitions[0] is not None:
             s, a, r, done, s_ = transitions[0]
-            if isinstance(s, np.ndarray):
-                s = s[:].squeeze()
-                s_ = s_[:].squeeze()
-                # self.buffer_observations.append((s, a, r, done, s_, self.action_probs))
+            if isinstance(s['state'], np.ndarray):
 
                 if not self.trainning:
                     if self.prev_obs_is_done:
                         self.test_video = []
 
-                    self.test_video.append(s[-1])
+                    self.test_video.append(s['pixels'][0])
                     self.prev_obs_is_done = done
 
+                s = s['state'][:].squeeze()
+                s_ = s_['state'][:].squeeze()
+                # self.buffer_observations.append((s, a, r, done, s_, self.action_probs))
                 # if (done or self.env_steps % self.frames_per_update == 0) \
                 #        and len(self.buffer_observations) >= 1:
 

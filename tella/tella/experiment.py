@@ -263,8 +263,8 @@ def run(
                     data_logger.receive_transitions(transitions)
                     agent.receive_transitions(
                         transitions
-                        if is_learning_allowed
-                        else hide_rewards(transitions)
+                        #if is_learning_allowed
+                        #else hide_rewards(transitions)
                     )
                 agent.task_variant_end(
                     task_variant.task_label, task_variant.variant_label
@@ -388,7 +388,7 @@ def generate_transitions(
     else:
         env = vector_env_cls([task_variant.make_env for _ in range(num_envs)])
 
-    env.seed(task_variant.rng_seed)
+    #env.seed(task_variant.rng_seed)
     num_episodes_finished = 0
     num_steps_finished = 0
 
@@ -396,7 +396,9 @@ def generate_transitions(
     episode_ids = list(range(num_envs))
     next_episode_id = episode_ids[-1] + 1
 
-    observations = env.reset()
+    observations = env.reset(seed=task_variant.rng_seed)
+    if num_envs == 1:
+        observations = [observations]
     if task_variant.num_episodes is not None:
         continue_task = num_episodes_finished < task_variant.num_episodes
     else:

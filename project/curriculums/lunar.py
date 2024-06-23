@@ -1,48 +1,9 @@
 import gym
-from gym import spaces
-from gym.wrappers import GrayScaleObservation, FrameStack, ResizeObservation
+from gym.wrappers.pixel_observation import PixelObservationWrapper
+
 
 import tella
 from tella.curriculum import InterleavedEvalCurriculum
-
-
-class RenderObservationWrapper(gym.ObservationWrapper):
-    def __init__(
-        self,
-        env: gym.Env,
-    ):
-        gym.ObservationWrapper.__init__(self, env)
-
-        self.render_history = []
-
-        self.env.reset()
-        pixels = self._render()
-        pixels_spaces = spaces.Box(
-            shape=pixels.shape, low=0, high=255, dtype=pixels.dtype
-        )
-        self.observation_space = pixels_spaces
-
-    def observation(self, observation):
-        pixel_observation = self._add_pixel_observation(observation)
-        return pixel_observation
-
-    def _add_pixel_observation(self, wrapped_observation):
-        return self._render()
-
-    def _render(self, *args, **kwargs):
-        render = self.env.render(mode="rgb_array")
-        if isinstance(render, list):
-            self.render_history += render
-        return render
-
-
-class LunaLenderEnv(gym.Wrapper):
-    def __init__(self, params={}):
-        super().__init__(gym.make("LunarLander-v2", **params))
-        # self.env = RenderObservationWrapper(self.env)
-        # self.env = GrayScaleObservation(self.env)
-        # self.env = ResizeObservation(self.env, 84)
-        # self.env = FrameStack(self.env, 4)
 
 
 class LunarLanderConstructor:
@@ -50,7 +11,10 @@ class LunarLanderConstructor:
         self.params = params
 
     def __call__(self):
-        return LunaLenderEnv(params=self.params)
+        return PixelObservationWrapper(
+            gym.make("LunarLander-v2", render_mode="rgb_array", **self.params),
+            pixels_only=False,
+        )
 
 
 LUNAR_ENVS = [
@@ -80,7 +44,7 @@ LUNAR_ENVS = [
     ),
     LunarLanderConstructor(
         params={
-            "gravity": -2.0,
+            "gravity": -4.0,
             "enable_wind": False,
             "wind_power": 5.0,
             "turbulence_power": 1.5,
@@ -97,18 +61,44 @@ LUNAR_ENVS = [
     LunarLanderConstructor(
         params={
             "gravity": -10.0,
-            "enable_wind": False,
+            "enable_wind": True,
             "wind_power": 20.0,
             "turbulence_power": 0.2,
         }
     ),
+    LunarLanderConstructor(
+        params={
+            "gravity": -9.0,
+            "enable_wind": True,
+            "wind_power": 2.0,
+            "turbulence_power": 2.0,
+        }
+    ),
+    LunarLanderConstructor(
+        params={
+            "gravity": -6.0,
+            "enable_wind": True,
+            "wind_power": 20.0,
+            "turbulence_power": 0.2,
+        }
+    ),
+    LunarLanderConstructor(
+        params={
+            "gravity": -11.0,
+            "enable_wind": True,
+            "wind_power": 10.0,
+            "turbulence_power": 0.8,
+        }
+    ),
+    LunarLanderConstructor(
+        params={
+            "gravity": -5.0,
+            "enable_wind": True,
+            "wind_power": 3.0,
+            "turbulence_power": 2.0,
+        }
+    ),
 ]
-
-# test_env = LUNAR_ENVS[0]()
-# print(test_env.observation_space)
-# print(test_env.reset())
-# print(test_env.step(0))
-# print(test_env.step(0))
 
 
 class LunarCurriculum(InterleavedEvalCurriculum):
@@ -122,7 +112,7 @@ class LunarCurriculum(InterleavedEvalCurriculum):
                     variant_label=(
                         "Checkpoint" if i == len(LUNAR_ENVS) - 1 else "Default"
                     ),
-                    num_episodes=5,
+                    num_episodes=20,
                     rng_seed=1234,
                 )
                 for i in range(len(LUNAR_ENVS))
@@ -150,7 +140,7 @@ class LunarCurriculum(InterleavedEvalCurriculum):
                         num_steps=1_000,
                         rng_seed=1234,
                     )
-                    for j in range(19)
+                    for j in range(49)
                 ]
                 + [
                     tella.curriculum.TaskVariant(
@@ -177,7 +167,7 @@ class LunarCurriculumPPO(InterleavedEvalCurriculum):
                     variant_label=(
                         "Checkpoint" if i == len(LUNAR_ENVS) - 1 else "Default"
                     ),
-                    num_episodes=5,
+                    num_episodes=20,
                     rng_seed=1234,
                 )
                 for i in range(len(LUNAR_ENVS))
@@ -186,18 +176,16 @@ class LunarCurriculumPPO(InterleavedEvalCurriculum):
 
     def learn_blocks(self):
         for i in range(len(LUNAR_ENVS)):
-            variants = (
-                [
-                    tella.curriculum.TaskVariant(
-                        LUNAR_ENVS[i],
-                        task_label=f"Lunar-Env-{i}",
-                        variant_label="PPO_Train_STM",
-                        num_steps=20_000,
-                        rng_seed=1234,
-                    )
-                    for _ in range(50)
-                ]
-            )
+            variants = [
+                tella.curriculum.TaskVariant(
+                    LUNAR_ENVS[i],
+                    task_label=f"Lunar-Env-{i}",
+                    variant_label="PPO_Train_STM",
+                    num_steps=20_000,
+                    rng_seed=1234,
+                )
+                for _ in range(50)
+            ]
             for block in split_learn_block_per_task_variant(variants):
                 yield block
 

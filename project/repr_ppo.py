@@ -10,14 +10,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class RePR:
-    def __init__(self, mode="stm", batch_size=128, alpha=0.5, action_space=18):
+    def __init__(self, mode="stm", batch_size=128, alpha=0.5, action_space=18, ltm_buffer=20_000):
         self.action_space = action_space
         self.stm_model = PPO(action_space=action_space)
         self.ltm_net = LinearQnet(action_space=action_space).to(device)
-        self.ltm_replay = ReplayBuffer(size=20_000)
+        self.ltm_replay = ReplayBuffer(size=ltm_buffer)
+        self.ltm_buffer = ltm_buffer
+        self.horizon = 1000
         self.gan = GAN()
         self.new_gan = GAN()
-        self.kkk = True
 
         assert mode in ["stm", "ltm", "gan"]
         self.mode = mode
@@ -37,12 +38,9 @@ class RePR:
         self.train_ep_r = []
         self.train_entropy = []
 
-        self.stm_steps = 0
-        self.ltm_steps = 0
         self.env_steps = 0
 
     def learning(self, learn):
-        # self.stm_model.train = learn
         self.trainning = learn
 
     def add_transition(self, obs):
@@ -53,7 +51,7 @@ class RePR:
             if self.trainning:
                 self.train_r.append(obs[2])
                 self.log(obs[5])
-                if obs[5] or len(self.stm_model.data) >= 1000:
+                if obs[5] or len(self.stm_model.data) >= self.horizon:
                     self.train_step()
         else:
             self.ltm_replay.put(obs)
@@ -100,15 +98,13 @@ class RePR:
         if not mode == self.mode:
             if mode == "stm":
                 print("CHANGE")
-                self.stm_steps = 0
                 self.env_steps = 0
                 self.stm_model = PPO(action_space=self.action_space)
-                self.ltm_replay = ReplayBuffer(size=20_000)
+                self.ltm_replay = ReplayBuffer(size=self.ltm_buffer)
             if mode == "ltm":
                 print("CHANGE TO LTM")
                 self.train_loss.clear()
                 self.env_steps = 0
-                self.ltm_steps = 0
                 self.gan.copy_from(self.new_gan)
                 self.prev_ltm_net = LinearQnet(action_space=self.action_space).to(device)
                 self.prev_ltm_net.load_state_dict(self.ltm_net.state_dict())
@@ -129,14 +125,8 @@ class RePR:
         loss, entropy = self.stm_model.train_net()
         self.train_loss.append(loss)
         self.train_entropy.extend(entropy)
-        self.stm_steps += 1
 
     def train_ltm_step(self):
-        self.ltm_steps += 1
-        # if self.first_ltm_train:
-        #    self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
-        #    self.ltm_replay = deepcopy(self.stm_dqn.replay)
-        # else:
         if self.ltm_replay.size() > 1000:
             s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
             s = s.to(device)
@@ -149,9 +139,6 @@ class RePR:
             loss_curr_task = torch.nn.functional.mse_loss(ltm_q_out, stm_q_out)
 
             if not self.first_ltm_train:
-                if self.kkk:
-                    print("FIRST GAN TRANFER")
-                    self.kkk = False
                 with torch.no_grad():
                     gen_obs = self.gan.sample(self.batch_size)
                     prev_ltm_q_out_gen = torch.nn.functional.softmax(self.prev_ltm_net(gen_obs) / 0.2, dim=-1)
@@ -209,7 +196,6 @@ class RePR:
         # Save ltm
         torch.save(
             {
-                "iter": self.ltm_steps,
                 "replay": self.ltm_replay.buffer,
                 "model_state_dict": self.ltm_net.state_dict(),
                 "optimizer_state_dict": self.ltm_optimizer.state_dict(),

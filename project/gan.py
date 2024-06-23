@@ -9,7 +9,7 @@ class GAN:
     def __init__(self, tradeoff=0.1, lr=0.0002, drift=1e-6):
         super(GAN, self).__init__()
 
-        #self.gen = nn.Sequential(
+        # self.gen = nn.Sequential(
         #    nn.Linear(100, 256 * 7 * 7),
         #    nn.BatchNorm1d(256 * 7 * 7, momentum=0.9, eps=1e-5),
         #    nn.ReLU(),
@@ -29,18 +29,18 @@ class GAN:
         #    nn.ConvTranspose2d(64, 4, kernel_size=(4, 4),
         #                       stride=(1, 1), padding=2),
         #    nn.Tanh(),
-        #).to(device)
+        # ).to(device)
         self.gen = nn.Sequential(
             nn.Linear(2, 16),
             nn.BatchNorm1d(16),
             nn.ReLU(),
-            nn.Linear(16,32),
+            nn.Linear(16, 32),
             nn.BatchNorm1d(32),
             nn.ReLU(),
-            nn.Linear(32,8)
+            nn.Linear(32, 8),
         )
 
-        #self.disc = nn.Sequential(
+        # self.disc = nn.Sequential(
         #    nn.Conv2d(4, 64, kernel_size=(5, 5), stride=(3, 3)),
         #    nn.LeakyReLU(0.2),
         #    nn.Conv2d(64, 128, kernel_size=(5, 5), stride=(2, 2)),
@@ -49,19 +49,17 @@ class GAN:
         #    nn.LeakyReLU(0.2),
         #    nn.Flatten(),
         #    nn.Linear(256 * 4 * 4, 1),
-        #).to(device)
+        # ).to(device)
         self.disc = nn.Sequential(
             nn.Linear(8, 16),
             nn.LeakyReLU(),
-            nn.Linear(16,32),
+            nn.Linear(16, 32),
             nn.LeakyReLU(),
-            nn.Linear(32,1)
+            nn.Linear(32, 1),
         )
 
-        self.gen_optim = optim.Adam(
-            self.gen.parameters(), lr=lr)
-        self.disc_optim = optim.Adam(
-            self.disc.parameters(), lr=lr)
+        self.gen_optim = optim.Adam(self.gen.parameters(), lr=lr)
+        self.disc_optim = optim.Adam(self.disc.parameters(), lr=lr)
 
         self.tradeoff = tradeoff
         self.drift = drift
