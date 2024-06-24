@@ -30,9 +30,6 @@ for k, file in enumerate(glob("./runs/eval_ppo*.txt")):
                 ppo_eval_data[env].append([])
             ppo_eval_data[env][k].append(reward)
 
-print(np.array(ppo_train_data['r']).shape)
-print(np.array(ppo_eval_data).shape)
-
 dqn_train = "./train_dqn.txt"
 dqn_eval = "./eval_dqn.txt"
 
@@ -41,32 +38,43 @@ dqn_train_data = {
     "ltm": {"r": [], "l": [], "e": []},
 }
 
-with open(dqn_train, "r") as dqn_train_file:
-    for line in dqn_train_file:
-        infos = line.split("|")
-        mode = infos[0].split(" ")[0]
-        env = infos[0].split(" ")[2]
-        loss = float(infos[1].split(":")[-1])
-        entropy = float(infos[2].split(":")[-1])
-        reward = float(infos[3].split(":")[-1])
-        env_train_data = dqn_train_data[mode]
-        env_train_data["r"].append(reward)
-        env_train_data["l"].append(loss)
-        env_train_data["e"].append(entropy)
+for file in glob("./runs/train_dqn*.txt"):
+    dqn_train_data["stm"]["r"].append([])
+    dqn_train_data["stm"]["l"].append([])
+    dqn_train_data["stm"]["e"].append([])
+    dqn_train_data["ltm"]["r"].append([])
+    dqn_train_data["ltm"]["l"].append([])
+    dqn_train_data["ltm"]["e"].append([])
+    with open(file, "r") as f:
+        for line in f:
+            infos = line.split("|")
+            mode = infos[0].split(" ")[0]
+            env = infos[0].split(" ")[2]
+            loss = float(infos[1].split(":")[-1])
+            entropy = float(infos[2].split(":")[-1])
+            reward = float(infos[3].split(":")[-1])
+            env_train_data = dqn_train_data[mode]
+            env_train_data["r"][-1].append(reward)
+            env_train_data["l"][-1].append(loss)
+            env_train_data["e"][-1].append(entropy)
+
 
 dqn_eval_data = {"stm": {}, "ltm": {}}
 
-with open(dqn_eval, "r") as dqn_eval_file:
-    for line in dqn_eval_file:
-        infos = line.split("|")
-        mode = infos[0].strip(" ")
-        if mode in ["stm", "ltm"]:
-            env = infos[1].split(" ")[0]
-            test_env = infos[1].split(" ")[-2]
-            r = float(infos[2])
-            if test_env not in dqn_eval_data[mode]:
-                dqn_eval_data[mode][test_env] = []
-            dqn_eval_data[mode][test_env].append(r)
+for k, file in enumerate(glob("./runs/eval_ppo*.txt")):
+    with open(file, "r") as f:
+        for line in f:
+            infos = line.split("|")
+            mode = infos[0].strip(" ")
+            if mode in ["stm", "ltm"]:
+                env = infos[1].split(" ")[0]
+                test_env = infos[1].split(" ")[-2]
+                r = float(infos[2])
+                if test_env not in dqn_eval_data[mode]:
+                    dqn_eval_data[mode][test_env] = []
+                if (k + 1) > dqn_eval_data[mode][test_env]:
+                    dqn_eval_data[mode][test_env].append([])
+                dqn_eval_data[mode][test_env][-1].append(r)
 
 
 def plot_data(
