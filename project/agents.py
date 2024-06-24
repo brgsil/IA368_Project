@@ -5,10 +5,8 @@ import tella
 import torch
 import numpy as np
 
-# from repr import RePR
 from repr_ppo import RePR
-
-from curriculums.lunar import LunarCurriculum
+from curriculums.lunar import LunarCurriculumPPO
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"##### DEVICE: {device}")
@@ -50,8 +48,6 @@ class RePRAgent(tella.ContinualRLAgent):
         self.env_steps = 0
         self.total_steps = 0
         self.repr_model.task = task_name
-        self.buffer_observations = collections.deque(maxlen=4)
-        self.buffer_sample_action = collections.deque(maxlen=4)
         self.curr_action = 0
         self.action_probs = 1 / self.action_space
         if task_name != self.curr_task:
@@ -83,19 +79,11 @@ class RePRAgent(tella.ContinualRLAgent):
         self.logger.info(f"Start variant {variant_name}")
 
     def choose_actions(self, observations):
-        # if self.env_steps < 4:
-        #    self.curr_action = 0
-        #    self.action_probs = 1 / 18.0
-        # elif self.env_steps % self.frames_per_update == 0:
-        # Sample new Action
-        # x = list(self.buffer_sample_action)
-        # x = np.array([x[0]] * (4 - len(x)) + x)
-        # x = 2 * x / 255.0 - 1
-        if isinstance(observations[0]['state'], np.ndarray):
-            x = observations[0]['state'].squeeze()
+        x = observations[0]
+        if isinstance(x, np.ndarray):
+            x = x.squeeze()
             if (x.shape[0] == 8):
                 x = torch.from_numpy(x).float().unsqueeze(0)
-                #x = 2 * x / 255.0 - 1
                 assert x.shape == (1, 8), f"Actual: {x.shape}"
                 with torch.no_grad():
                     if self.repr_model.mode == "stm":
@@ -107,38 +95,22 @@ class RePRAgent(tella.ContinualRLAgent):
 
         self.env_steps += 1
         self.total_steps += 1
-        # print(f"Log| Selected action: {self.curr_action}")
+
         # Keep sending current action
         return [self.curr_action]
 
     def receive_transitions(self, transitions):
-        # self.logger.info(f"Receiving transition - Step {self.env_steps}")
         if transitions[0] is not None:
             s, a, r, done, s_ = transitions[0]
-            if isinstance(s['state'], np.ndarray):
 
-                if not self.trainning:
-                    if self.prev_obs_is_done:
-                        self.test_video = []
+            if isinstance(s, np.ndarray):
+                #if not self.trainning:
+                #    if self.prev_obs_is_done:
+                #        self.test_video = []
 
-                    self.test_video.append(s['pixels'][0])
-                    self.prev_obs_is_done = done
+                #    self.test_video.append(s['pixels'][0])
+                #    self.prev_obs_is_done = done
 
-                s = s['state'][:].squeeze()
-                s_ = s_['state'][:].squeeze()
-                # self.buffer_observations.append((s, a, r, done, s_, self.action_probs))
-                # if (done or self.env_steps % self.frames_per_update == 0) \
-                #        and len(self.buffer_observations) >= 1:
-
-                # one_last_frame = self.buffer_observations[-2][-2]
-                # _, action, _, done, last_frame, prob_a = self.buffer_observations[-1]
-                # observation = preprocess(one_last_frame, last_frame)
-                # observation = preprocess2(last_frame)
-                # self.prev_observation = np.array(self.buffer_sample_action)
-                # self.buffer_sample_action.append(observation)
-                # curr_observation = np.array(self.buffer_sample_action)
-
-                # if self.trainning and self.prev_observation.shape[0] == 4:
                 if self.trainning:
                     if s.shape == (8,):
                         if self.repr_model.mode == "stm":
@@ -197,7 +169,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     tella.rl_experiment(
         RePRAgent,
-        LunarCurriculum,
+        LunarCurriculumPPO,
         num_lifetimes=1,
         num_parallel_envs=1,
         log_dir="./logs",

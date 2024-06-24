@@ -14,7 +14,7 @@ class RePR:
     def __init__(self, mode="stm", batch_size=32, alpha=0.5, action_space=4):
         self.stm_dqn = DQN(action_space=action_space)
         self.ltm_net = LinearQnet(action_space=action_space).to(device)
-        self.ltm_replay = ReplayBuffer(size=50_000)
+        self.ltm_replay = ReplayBuffer(size=150_000)
         self.gan = GAN()
         self.new_gan = GAN()
         self.action_space = action_space
@@ -69,13 +69,17 @@ class RePR:
                 )
                 self.train_entropy = []
 
+            if len(self.train_loss) == 0:
+                self.train_loss = [0]
+            if len(self.train_entropy) == 0:
+                self.train_entropy = [0]
             print(
                 f"{self.mode} - {self.task} Train [{self.env_steps/1_000_000.0:.3f}M steps] |"
                 + f" Loss:{sum(self.train_loss)/len(self.train_loss):.5f}"
                 + entropy
                 + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.4f}"
             )
-            with open("terminal.txt", "a") as f:
+            with open("train_dqn.txt", "a") as f:
                 f.write(
                     f"{self.mode} - {self.task} Train [{self.env_steps/1_000_000.0:.3f}M steps] |"
                     + f" Loss:{sum(self.train_loss)/len(self.train_loss):.5f}"
@@ -103,7 +107,7 @@ class RePR:
                 self.train_loss.clear()
                 self.env_steps = 0
                 self.gan.copy_from(self.new_gan)
-                self.prev_ltm_net = LinearQnet().to(device)
+                self.prev_ltm_net = LinearQnet(action_space=self.action_space).to(device)
                 self.prev_ltm_net.load_state_dict(self.ltm_net.state_dict())
             if mode == "gan":
                 self.new_gan = GAN()
@@ -125,7 +129,7 @@ class RePR:
     def train_ltm_step(self):
         if self.first_ltm_train:
             self.ltm_net.load_state_dict(self.stm_dqn.q_net.state_dict())
-            self.ltm_replay = deepcopy(self.stm_dqn.replay)
+            #self.ltm_replay = deepcopy(self.stm_dqn.replay)
         else:
             if self.ltm_replay.size() > self.stm_dqn.start_buffer_size:
                 s, _, _, _, _ = self.ltm_replay.sample(self.batch_size)
@@ -135,19 +139,19 @@ class RePR:
                     stm_q_out = self.stm_dqn.logits(s)
                     stm_q_out = F.softmax(stm_q_out / 0.5, dim=-1)
 
-                ltm_q_out = self.ltm_net(s)
+                ltm_q_out = F.softmax(self.ltm_net(s), dim=-1)
 
-                loss_curr_task = F.functional.mse_loss(ltm_q_out, stm_q_out)
+                loss_curr_task = F.mse_loss(ltm_q_out, stm_q_out)
 
                 with torch.no_grad():
                     gen_obs = self.gan.sample(self.batch_size)
                     prev_ltm_q_out_gen = self.prev_ltm_net(gen_obs)
-                    prev_ltm_q_out_gen = F.softmax(prev_ltm_q_out_gen)
+                    prev_ltm_q_out_gen = F.softmax(prev_ltm_q_out_gen, dim=-1)
 
                 ltm_q_out_gen = self.ltm_net(gen_obs)
-                ltm_q_out_gen = F.softmax(ltm_q_out_gen)
+                ltm_q_out_gen = F.softmax(ltm_q_out_gen, dim=-1)
 
-                loss_prev_task = torch.nn.functional.mse_loss(
+                loss_prev_task = F.mse_loss(
                     ltm_q_out_gen, prev_ltm_q_out_gen
                 )
 
@@ -164,32 +168,34 @@ class RePR:
 
     def train_gan(self):
         print(f"Buffer size: {self.ltm_replay.size()} - Batch: {self.batch_size}")
-        disc_loss = []
-        gen_loss = []
-        total_iter = 100_000
+        disc_loss_lst = []
+        gen_loss_lst = []
+        total_iter = 100
         for i in range(total_iter):
-            if random.random() < 1 / self.tasks_seen:
+            if random.random() < 1. / self.tasks_seen:
                 real_samples = self.ltm_replay.sample(50)[0]
+                print("REAL")
             else:
                 real_samples = self.gan.sample(batch=50)
+                print("PAST")
 
             disc_loss, gen_loss = self.new_gan.train_step(real_samples)
-            disc_loss.append(disc_loss)
-            gen_loss.append(gen_loss)
+            disc_loss_lst.append(disc_loss)
+            gen_loss_lst.append(gen_loss)
             print(
-                f"GAN TRAIN [{i}/{total_iter}] | Disc: {sum(disc_loss)/len(disc_loss):.4f} - Gen: {sum(gen_loss)/len(gen_loss):.4f}",
+                f"GAN TRAIN [{i}/{total_iter}] | Disc: {sum(disc_loss_lst)/len(disc_loss_lst):.4f} - Gen: {sum(gen_loss_lst)/len(gen_loss_lst):.4f}",
                 end="\r",
             )
             if (i + 1) % 100 == 0:
                 with open("terminal.txt", "a") as f:
                     f.write(
-                        f"GAN TRAIN [{i}/{total_iter}] | Disc: {sum(disc_loss)/len(disc_loss):.4f} - Gen: {sum(gen_loss)/len(gen_loss):.4f}\n"
+                        f"GAN TRAIN [{i}/{total_iter}] | Disc: {sum(disc_loss_lst)/len(disc_loss_lst):.4f} - Gen: {sum(gen_loss_lst)/len(gen_loss_lst):.4f}\n"
                     )
                 print(
-                    f"GAN TRAIN [{i}/{total_iter}] | Disc: {sum(disc_loss)/len(disc_loss):.4f} - Gen: {sum(gen_loss)/len(gen_loss):.4f}",
+                    f"GAN TRAIN [{i}/{total_iter}] | Disc: {sum(disc_loss_lst)/len(disc_loss_lst):.4f} - Gen: {sum(gen_loss_lst)/len(gen_loss_lst):.4f}",
                 )
         print(
-            f"GAN TRAIN [{total_iter}/{total_iter}] | Disc: {sum(disc_loss)/len(disc_loss):.4f} - Gen: {sum(gen_loss)/len(gen_loss):.4f}"
+            f"GAN TRAIN [{total_iter}/{total_iter}] | Disc: {sum(disc_loss_lst)/len(disc_loss_lst):.4f} - Gen: {sum(gen_loss_lst)/len(gen_loss_lst):.4f}"
         )
 
     def save_checkpoint(self, dir="./logs/checkpoints/"):

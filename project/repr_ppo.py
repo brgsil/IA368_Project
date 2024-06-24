@@ -166,7 +166,7 @@ class RePR:
         avg_gen_loss = []
         total_iter = 10_000
         for i in range(total_iter):
-            if random.random() < 1 / self.tasks_seen:
+            if random.random() < 1. / self.tasks_seen:
                 real_samples = self.ltm_replay.sample(32)[0]
             else:
                 real_samples = self.gan.sample(batch=32)

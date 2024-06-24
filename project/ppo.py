@@ -20,19 +20,6 @@ class PPO(nn.Module):
         self.data = []
         print("INIT PPO")
 
-        #self.features = nn.Sequential(
-        #    nn.Conv2d(4, 32, (8, 8), stride=(4, 4)),
-        #    nn.ReLU(),
-        #    nn.Conv2d(32, 64, (4, 4), stride=(2, 2)),
-        #    nn.ReLU(),
-        #    nn.Conv2d(64, 64, (3, 3)),
-        #    nn.ReLU(),
-        #    nn.Flatten(),
-        #    nn.Linear(7 * 7 * 64, 512),
-        #    nn.ReLU()
-        #)
-
-        #self.fc_pi = nn.Linear(512, action_space)
         self.fc_pi = nn.Sequential(
             nn.Linear(8, 64),
             nn.ReLU(),
@@ -40,7 +27,7 @@ class PPO(nn.Module):
             nn.ReLU(),
             nn.Linear(64, action_space),
         )
-        #self.fc_v = nn.Linear(512, 1)
+
         self.fc_v = nn.Sequential(
             nn.Linear(8, 64),
             nn.ReLU(),
@@ -53,23 +40,14 @@ class PPO(nn.Module):
         self.last_entropy = 0.0
 
     def pi(self, x, softmax_dim=-1):
-        #assert x.max().item() <= 1, f"Obs max is {x.max()}"
-        #assert x.min().item() >= -1, f"Obs min is {x.min()}"
-        #x = F.relu(self.features(x))
         x = self.fc_pi(x)
         prob = F.softmax(x, dim=softmax_dim)
         return prob
 
     def logits(self, x):
-        #assert x.max().item() <= 1, f"Obs max is {x.max()}"
-        #assert x.min().item() >= -1, f"Obs min is {x.min()}"
-        #return self.fc_pi(F.relu(self.features(x)))
         return self.fc_pi(x)
 
     def v(self, x):
-        #assert x.max().item() <= 1, f"Obs max is {x.max()}"
-        #assert x.min().item() >= -1, f"Obs min is {x.min()}"
-        #x = F.relu(self.features(x))
         v = self.fc_v(x)
         return v
 
@@ -104,11 +82,15 @@ class PPO(nn.Module):
         return s, a, r, s_prime, done_mask, prob_a
 
     def sample_action(self, x):
-        #x = 2 * x / 255.0 - 1
         prob = self.pi(x)
         m = Categorical(prob[0])
         a = m.sample()
         return a.detach().item(), prob[0, a].detach().item()
+
+    def reset_lr(self):
+        self.last_entropy = 0.
+        self.optimizer.param_groups[0]["lr"] = learning_rate * 0.8
+
 
     def train_net(self):
         s, a, r, s_prime, done_mask, prob_a = self.make_batch()
@@ -139,7 +121,7 @@ class PPO(nn.Module):
             surr2 = torch.clamp(ratio, 1 - eps_clip, 1 + eps_clip) * advantage
             loss = -torch.min(surr1, surr2).mean() + F.smooth_l1_loss(
                 self.v(s), td_target.detach()
-            ) #- 0.0001 * entropy.mean()
+            )  # - 0.0001 * entropy.mean()
 
             self.optimizer.zero_grad()
             loss.mean().backward()
@@ -148,11 +130,11 @@ class PPO(nn.Module):
             entropy_lst.extend(entropy.detach().tolist())
 
         curr_entropy = sum(entropy_lst) / len(entropy_lst)
-        if self.last_entropy == 0.:
+        if self.last_entropy == 0.0:
             self.last_entropy = curr_entropy
         if self.last_entropy * 0.95 > curr_entropy:
-            self.optimizer.param_groups[0]['lr'] *= 0.9
-            curr_lr = self.optimizer.param_groups[0]['lr']
+            self.optimizer.param_groups[0]["lr"] *= 0.95
+            curr_lr = self.optimizer.param_groups[0]["lr"]
             print(f"UPDATE LR: {curr_lr*1e4:.4f} E-4")
             self.last_entropy = curr_entropy
         return sum(acc_loss) / len(acc_loss), entropy_lst
@@ -160,53 +142,9 @@ class PPO(nn.Module):
     def save_checkpoint(self, dir):
         torch.save(
             {
-                #"features_model": self.features.state_dict(),
                 "pi_mode": self.fc_pi.state_dict(),
                 "v_model": self.fc_v.state_dict(),
                 "optim": self.optimizer.state_dict(),
             },
             dir + "ppo.pt",
         )
-
-
-"""
-def main():
-    env = gym.make("CartPole-v1")
-    model = PPO()
-    score = 0.0
-    print_interval = 20
-
-    for n_epi in range(10000):
-        s, _ = env.reset()
-        done = False
-        while not done:
-            for t in range(T_horizon):
-                prob = model.pi(torch.from_numpy(s).float())
-                m = Categorical(prob)
-                a = m.sample().item()
-                s_prime, r, done, truncated, info = env.step(a)
-
-                model.put_data(
-                    (s, a, r / 100.0, s_prime, prob[a].item(), done))
-                s = s_prime
-
-                score += r
-                if done:
-                    break
-
-            model.train_net()
-
-        if n_epi % print_interval == 0 and n_epi != 0:
-            print(
-                "# of episode :{}, avg score : {:.1f}".format(
-                    n_epi, score / print_interval
-                )
-            )
-            score = 0.0
-
-    env.close()
-
-
-if __name__ == "__main__":
-    main()
-"""

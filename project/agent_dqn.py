@@ -76,9 +76,9 @@ class RePRAgent(tella.ContinualRLAgent):
         x = observations[0]
         if isinstance(x, np.ndarray):
             x = x.squeeze()
-            if (x.shape[0] == 8):
+            if x.shape[0] == 8:
                 x = torch.from_numpy(x).float().unsqueeze(0)
-                assert x.shape == (1,8), f"Actual shape {x.shape}"
+                assert x.shape == (1, 8), f"Actual shape {x.shape}"
                 with torch.no_grad():
                     self.curr_action = self.repr_model.sample_action(x)
 
@@ -95,11 +95,11 @@ class RePRAgent(tella.ContinualRLAgent):
                     self.test_ep_r.append(self.test_r)
                     self.test_r = 0
 
-                #if self.prev_obs_is_done:
+                # if self.prev_obs_is_done:
                 #    self.test_video = []
 
-                #self.test_video.append(s['pixels'][0])
-                #self.prev_obs_is_done = done
+                # self.test_video.append(s['pixels'][0])
+                # self.prev_obs_is_done = done
 
             if self.trainning:
                 assert s.shape == (8,)
@@ -108,7 +108,7 @@ class RePRAgent(tella.ContinualRLAgent):
                     (
                         s,
                         a,
-                        r/100.,
+                        r / 100.0,
                         done,
                         s_,
                     )
@@ -116,20 +116,22 @@ class RePRAgent(tella.ContinualRLAgent):
 
     def task_variant_end(self, task_name, variant_name):
         if not self.trainning:
-            with open("eval.txt", "a") as f:
-                f.write(f"{self.repr_model.mode} | {self.train_task} - {self.repr_model.task} | {sum(self.test_ep_r)/len(self.test_ep_r):.2f}\n")
+            with open("eval_dqn.txt", "a") as f:
+                f.write(
+                    f"{self.repr_model.mode} | {self.train_task} - {self.repr_model.task} | {sum(self.test_ep_r)/len(self.test_ep_r):.2f}\n"
+                )
             self.test_ep_r = []
 
-            #frames = self.test_video
-            #out = cv2.VideoWriter(
+            # frames = self.test_video
+            # out = cv2.VideoWriter(
             #    f"output_dqn_{task_name}.mp4",
             #    cv2.VideoWriter_fourcc(*"mp4v"),
             #    10,
             #    (600, 400),
-            #)
-            #for frame in frames:
+            # )
+            # for frame in frames:
             #    out.write(frame)
-            #out.release()
+            # out.release()
 
         if self.trainning:
             if "Last" in variant_name:
@@ -144,7 +146,7 @@ class RePRAgent(tella.ContinualRLAgent):
 
 
 if __name__ == "__main__":
-    #logging.basicConfig(level=logging.INFO)
+    # logging.basicConfig(level=logging.INFO)
     tella.rl_experiment(
         RePRAgent,
         LunarCurriculum,

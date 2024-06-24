@@ -73,7 +73,7 @@ class LinearQnet(nn.Module):
 class DQN:
     def __init__(
         self,
-        lr=0.0005,
+        lr=0.0002,
         gamma=0.99,
         buffer=150_000,
         start_train=5_000,
