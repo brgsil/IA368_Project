@@ -170,14 +170,12 @@ class RePR:
         print(f"Buffer size: {self.ltm_replay.size()} - Batch: {self.batch_size}")
         disc_loss_lst = []
         gen_loss_lst = []
-        total_iter = 100
+        total_iter = 100_000
         for i in range(total_iter):
-            if random.random() < 1. / self.tasks_seen:
+            if random.random() < (1. / self.tasks_seen):
                 real_samples = self.ltm_replay.sample(50)[0]
-                print("REAL")
             else:
                 real_samples = self.gan.sample(batch=50)
-                print("PAST")
 
             disc_loss, gen_loss = self.new_gan.train_step(real_samples)
             disc_loss_lst.append(disc_loss)
@@ -186,7 +184,7 @@ class RePR:
                 f"GAN TRAIN [{i}/{total_iter}] | Disc: {sum(disc_loss_lst)/len(disc_loss_lst):.4f} - Gen: {sum(gen_loss_lst)/len(gen_loss_lst):.4f}",
                 end="\r",
             )
-            if (i + 1) % 100 == 0:
+            if (i + 1) % 1_000 == 0:
                 with open("terminal.txt", "a") as f:
                     f.write(
                         f"GAN TRAIN [{i}/{total_iter}] | Disc: {sum(disc_loss_lst)/len(disc_loss_lst):.4f} - Gen: {sum(gen_loss_lst)/len(gen_loss_lst):.4f}\n"

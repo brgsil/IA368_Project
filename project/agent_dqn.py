@@ -32,6 +32,7 @@ class RePRAgent(tella.ContinualRLAgent):
         self.train_task = "Init Model"
         self.test_r = 0
         self.test_ep_r = []
+        self.ltm_tasks = []
 
     def block_start(self, is_learning_allowed):
         self.trainning = is_learning_allowed
@@ -61,7 +62,9 @@ class RePRAgent(tella.ContinualRLAgent):
         elif "LTM" in variant_name:
             if self.trainning:
                 self.repr_model.first_ltm_train = self.first_ltm_train
-                self.repr_model.tasks_seen += 1
+                if task_name not in self.ltm_tasks:
+                    self.repr_model.tasks_seen += 1
+                    self.ltm_tasks.append(task_name)
                 if self.first_ltm_train:
                     self.first_ltm_train = False
             self.repr_model.set_mode("ltm")

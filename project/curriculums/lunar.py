@@ -108,7 +108,7 @@ class LunarCurriculum(InterleavedEvalCurriculum):
                     variant_label=(
                         "Checkpoint" if i == len(LUNAR_ENVS) - 1 else "Default"
                     ),
-                    num_episodes=5,
+                    num_episodes=20,
                     rng_seed=RNG_SEEDS[i],
                 )
                 for i in range(len(LUNAR_ENVS))
@@ -121,16 +121,16 @@ class LunarCurriculum(InterleavedEvalCurriculum):
                 LUNAR_ENVS[0],
                 task_label="Lunar-Env-0",
                 variant_label="PPO_Train_STM",
-                num_steps=1_000,
+                num_steps=20_000,
                 rng_seed=RNG_SEEDS[0],
             )
-            for _ in range(20)
+            for _ in range(40)
         ] + [
             tella.curriculum.TaskVariant(
                 LUNAR_ENVS[0],
                 task_label="Lunar-Env-0",
                 variant_label="PPO_LTM_Last",
-                num_steps=15_000,
+                num_steps=150_000,
                 rng_seed=RNG_SEEDS[0],
             )
         ]
@@ -141,27 +141,27 @@ class LunarCurriculum(InterleavedEvalCurriculum):
                         LUNAR_ENVS[i],
                         task_label=f"Lunar-Env-{i}",
                         variant_label="PPO_Train_STM",
-                        num_steps=1_000,
+                        num_steps=20_000,
                         rng_seed=RNG_SEEDS[i],
                     )
-                    for _ in range(20)
+                    for _ in range(40)
                 ]
                 + [
                     tella.curriculum.TaskVariant(
                         LUNAR_ENVS[i],
                         task_label=f"Lunar-Env-{i}",
                         variant_label=f"PPO_LTM_{j}",
-                        num_steps=1_000,
+                        num_steps=2_500,
                         rng_seed=RNG_SEEDS[i],
                     )
-                    for j in range(19)
+                    for j in range(49)
                 ]
                 + [
                     tella.curriculum.TaskVariant(
                         LUNAR_ENVS[i],
                         task_label=f"Lunar-Env-{i}",
                         variant_label="PPO_LTM_Last",
-                        num_steps=1_000,
+                        num_steps=2_500,
                         rng_seed=RNG_SEEDS[i],
                     )
                 ]
@@ -181,7 +181,7 @@ class LunarCurriculumPPO(InterleavedEvalCurriculum):
                     variant_label=(
                         "Checkpoint" if i == len(LUNAR_ENVS) - 1 else "Default"
                     ),
-                    num_episodes=5,
+                    num_episodes=20,
                     rng_seed=RNG_SEEDS[i],
                 )
                 for i in range(len(LUNAR_ENVS))
@@ -195,10 +195,10 @@ class LunarCurriculumPPO(InterleavedEvalCurriculum):
                     LUNAR_ENVS[i],
                     task_label=f"Lunar-Env-{i}",
                     variant_label="PPO_Train_STM",
-                    num_steps=1_000,
+                    num_steps=20_000,
                     rng_seed=RNG_SEEDS[i],
                 )
-                for _ in range(20)
+                for _ in range(40)
             ]
             for block in split_learn_block_per_task_variant(variants):
                 yield block

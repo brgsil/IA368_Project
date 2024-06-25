@@ -59,22 +59,25 @@ for file in glob("./runs/train_dqn*.txt"):
             env_train_data["e"][-1].append(entropy)
 
 
-dqn_eval_data = {"stm": {}, "ltm": {}}
+dqn_eval_data = {"stm": [], "ltm": []}
 
-for k, file in enumerate(glob("./runs/eval_ppo*.txt")):
+for k, file in enumerate(glob("./runs/eval_dqn*.txt")):
     with open(file, "r") as f:
         for line in f:
             infos = line.split("|")
             mode = infos[0].strip(" ")
             if mode in ["stm", "ltm"]:
                 env = infos[1].split(" ")[0]
-                test_env = infos[1].split(" ")[-2]
+                test_env = int(infos[1].strip(" ").split("-")[-1])
                 r = float(infos[2])
-                if test_env not in dqn_eval_data[mode]:
-                    dqn_eval_data[mode][test_env] = []
-                if (k + 1) > dqn_eval_data[mode][test_env]:
+                if (test_env + 1) > len(dqn_eval_data[mode]):
+                    dqn_eval_data[mode].append([])
+                if (k + 1) > len(dqn_eval_data[mode][test_env]):
                     dqn_eval_data[mode][test_env].append([])
                 dqn_eval_data[mode][test_env][-1].append(r)
+
+print(np.array(dqn_eval_data["stm"]).shape)
+print(np.array(dqn_eval_data["ltm"]).shape)
 
 
 def plot_data(
@@ -94,20 +97,66 @@ def plot_data(
     plt.show()
 
 
-idx = np.arange(len(dqn_train_data["stm"]["r"])) * 2
+def plot_multiples(
+    x,
+    y,
+    seg,
+    labelx="Number of Environment Steps",
+    labely="Mean Acc. Reaward per Episode",
+    yrange=[-410, 410],
+):
+    fig, axs = plt.subplots(y.shape[0], 1)
+    for i in range(y.shape[0]):
+        axs[i].plot(x, y[i], "tab:blue")
+        axs[i].vlines(seg, yrange[0], yrange[1],
+                      linestyles="--", colors="black")
+        axs[i].set_ylabel(f"Env. {i}")
+        axs[i].set_xlim([0, x.max()])
+        axs[i].set_ylim(yrange)
+    for i in range(y.shape[0]-1):
+        axs[i].set_xticks([])
+    fig.supxlabel(labelx)
+    fig.supylabel(labely)
+    plt.show()
+
+
+# Train PPO
+mean = np.array(ppo_train_data["r"]).mean(axis=0)
+idx = np.arange(mean.shape[0]) * 2
+transitions = (1 + np.arange(idx.shape[0] / 200 - 1)) * 400
+plot_data(idx, mean, transitions)
+
+# Eval PPO
+mean = np.array(ppo_eval_data).mean(axis=1)
+idx = np.arange(mean.shape[1]) * 20
+transitions = (1 + np.arange(idx.shape[0] / 20 - 2)) * 400
+plot_multiples(idx, mean, transitions, yrange=[-300, 300])
+
+# Train DQN RePR
+# STM
+data = 100 * np.array(dqn_train_data["stm"]["r"]).mean(axis=0)
+idx = np.arange(data.shape[0]) * 2
 transitions = (1 + np.arange(len(idx) / 200 - 1)) * 400
-data = 100 * np.array(dqn_train_data["stm"]["r"])
+plot_data(idx, data, transitions, yrange=[-300, 300])
+
+# LTM
+data = 100 * np.array(dqn_train_data["ltm"]["r"]).mean(axis=0)
+# idx = np.arange(data.shape[0]) * 2
+idx = np.concatenate((np.arange(75) * 2, np.arange(100) * 2 + 150))
+# transitions = (1 + np.arange(len(idx) / 75 - 1)) * 150
+transitions = np.array([150, 200, 250, 300])
 plot_data(idx, data, transitions)
 
-idx = np.arange(len(dqn_train_data["ltm"]["r"])) * 2
-transitions = (1 + np.arange(len(idx) / 25 - 1)) * 50
-data = 100 * np.array(dqn_train_data["ltm"]["r"])
-plot_data(idx, data, transitions)
+# Eval DQN RePR
+#STM
+data = np.array(dqn_eval_data["stm"]).mean(axis=1)
+idx = np.arange(data.shape[1]) * 20
+transitions = (1 + np.arange(len(idx) / 20 - 2)) * 400
+plot_multiples(idx, data, transitions)
 
-for env in dqn_eval_data["ltm"]:
-    print(env)
-    data = np.array(dqn_eval_data["ltm"][env])
-    print(data.shape)
-    idx = np.arange(data.shape[0])
-    transitions = (1 + np.arange(data.shape[0] / 50 - 1)) * 50
-    plot_data(idx, data, transitions)
+#LTM
+data = np.array(dqn_eval_data["ltm"]).mean(axis=1)
+idx = np.arange(data.shape[1]) + 150
+print(len(idx))
+transitions = (np.arange(len(idx) / 50)) * 50 + 150
+plot_multiples(idx, data, transitions)
