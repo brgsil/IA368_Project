@@ -25,4 +25,4 @@ docker run --rm -it projeto-repr
 ```
 ./exec.sh
 ```
-Após a execução dos experimentos, os resultados são salvos no diretório ```/runs``` e os gráficos podem ser gerados por ```python3 plots.py```.
+Após a execução dos experimentos, os resultados são salvos no diretório ```/runs``` e os gráficos podem ser gerados por ```python3 plot.py```.
