@@ -1,0 +1,8 @@
+#gym[classic_control]==0.23.1
+gym[box2d]==0.25.1
+gym_minigrid==1.0.3
+l2logger>=1.7.0
+#matplotlib #for visualization of minigrid envs
+numpy>=1.21.4
+pyglet>=1.4.0
+pyyaml

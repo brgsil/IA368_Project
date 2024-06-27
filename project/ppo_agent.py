@@ -3,19 +3,9 @@ import os
 import logging
 import tella
 import torch
-import cv2
 import numpy as np
 from ppo import PPO
-from curriculums.atari import SimpleAtariSequenceCurriculumPPO
-
-
-def preprocess(one_last_frame, last_frame):
-    x = np.maximum(one_last_frame, last_frame)
-    x = x.astype(np.uint8)
-    x = cv2.cvtColor(x, cv2.COLOR_RGB2GRAY)
-    x = cv2.resize(x, (84, 84), interpolation=cv2.INTER_LINEAR)
-    # return (x / 255.) * 2 - 1
-    return x
+from curriculums.lunar import LunarCurriculumPPO
 
 
 class PPOAgent(tella.ContinualRLAgent):
@@ -26,136 +16,116 @@ class PPOAgent(tella.ContinualRLAgent):
             rng_seed, observation_space, action_space, num_envs, config_file
         )
 
-        self.model = PPO()
+        self.action_space = 4
+        self.model = PPO(action_space=self.action_space)
         self.trainning = False
 
-        self.frames_per_update = 2
-        self.env_steps = 0
-        self.total_steps = 0
-        self.buffer_observations = collections.deque(maxlen=4)
-        self.buffer_sample_action = collections.deque(maxlen=4)
-        self.prev_observation = np.zeros((4, 84, 84))
-        self.action_probs = 1 / 18.0
+        self.action_probs = 1.0 / self.action_space
         self.checkpoint_count = 0
         self.losses = []
         self.train_r = []
         self.train_ep_r = []
         self.entropy = []
+        self.test_r = 0
+        self.test_ep_r = []
         self.logger = logging.getLogger("PPO Agent")
         self.ppo_horizon = 1000
-        self.task = ""
-        self.test_video = {}
+        self.task = "Init Model"
         self.curr_task = ""
         self.prev_obs_is_done = False
+        self.total_steps = 0
 
     def block_start(self, is_learning_allowed):
         self.trainning = is_learning_allowed
 
     def task_start(self, task_name):
-        # self.logger.info(f"Start task {task_name}")
         pass
 
     def task_variant_start(self, task_name, variant_name):
         self.env_steps = 0
-        if not self.task == task_name and 'Train' in variant_name:
+        if not self.task == task_name and "Train" in variant_name:
             self.total_steps = 0
             self.task = task_name
             self.loss = []
+            self.model.reset_lr()
         self.curr_task = task_name
-        self.buffer_observations = collections.deque(maxlen=4)
-        self.buffer_sample_action = collections.deque(maxlen=4)
-        self.action_probs = 1 / 18.0
+        self.action_probs = 1.0 / self.action_space
 
         if "Checkpoint" in variant_name:
             if not self.trainning:
                 checkpoint_path = (
-                    f"./logs/ppo/latest/checkpoint_{self.checkpoint_count}/"
+                    f"./logs/ppo_agent/latest/checkpoint_{self.checkpoint_count}/"
                 )
                 if not os.path.exists(checkpoint_path):
                     os.makedirs(checkpoint_path)
                 self.model.save_checkpoint(dir=checkpoint_path)
                 self.checkpoint_count += 1
 
-        if not self.trainning:
-            self.test_video[self.curr_task] = []
-
         self.logger.info(f"Start variant {variant_name}")
 
     def choose_actions(self, observations):
-        if self.env_steps < self.frames_per_update:
-            self.curr_action = 0
-            self.action_probs = 1 / 18.0
-        elif self.env_steps % self.frames_per_update == 0:
+        x = observations[0]
+        if isinstance(x, np.ndarray):
             # Sample new Action
-            x = list(self.buffer_sample_action)
-            x = np.array([x[0]] * (4 - len(x)) + x)
-            x = 2 * x / 255.0 - 1
-            x = torch.from_numpy(x).float().unsqueeze(0)
-            with torch.no_grad():
-                self.curr_action, self.action_probs = self.model.sample_action(
-                    x)
+            x = x.squeeze()
+            if x.shape[0] == 8:
+                x = torch.from_numpy(x).float().unsqueeze(0)
+                assert x.shape == (1, 8), f"Actual: {x.shape}"
+                with torch.no_grad():
+                    self.curr_action, self.action_probs = self.model.sample_action(
+                        x)
 
         self.env_steps += 1
-        self.total_steps += 1
-        # print(f"Log| Selected action: {self.curr_action}")
+        if self.trainning:
+            self.total_steps += 1
+
         # Keep sending current action
         return [self.curr_action]
 
     def receive_transitions(self, transitions):
-        # self.logger.info(f"Receiving transition - Step {self.env_steps}")
         if transitions[0] is not None:
             s, a, r, done, s_ = transitions[0]
-            self.buffer_observations.append(
-                (s, a, r, done, s_, self.action_probs))
 
-            if (done or self.env_steps % self.frames_per_update == 0) and len(self.buffer_observations) >=2:
-                if not self.trainning:
-                    if self.prev_obs_is_done:
-                        self.test_video[self.curr_task] = []
+            if not self.trainning:
+                self.test_r += r
+                if done:
+                    self.test_ep_r.append(self.test_r)
+                    self.test_r = 0
 
-                    self.test_video[self.curr_task].append(s)
-                    self.prev_obs_is_done = done
-
-                one_last_frame = self.buffer_observations[-2][-1]
-                observation = preprocess(one_last_frame, s_)
-                self.prev_observation = np.array(self.buffer_sample_action)
-                self.buffer_sample_action.append(observation)
-                curr_observation = np.array(self.buffer_sample_action)
-
-                if self.trainning and self.prev_observation.shape[0] == 4:
-                    total_r = sum(
-                        [r for _, _, r, _, _, _ in self.buffer_observations])
+            if self.trainning:
+                if s.shape == (8,):
                     self.model.put_data(
                         (
-                            self.prev_observation,
+                            s,
                             a,
-                            total_r,
-                            curr_observation,
+                            r / 100.0,
+                            s_,
                             self.action_probs,
                             done,
                         )
                     )
-                    self.train_r.append(total_r)
-                    if done:
-                        self.train_ep_r.append(sum(self.train_r))
-                        self.train_r = []
-                    if done or (self.env_steps % (self.frames_per_update*self.ppo_horizon) == 0):
-                        l, e = self.model.train_net()
-                        self.losses.append(l)
-                        self.entropy.append(e)
 
-                # self.prev_observation = observation
-
+                self.train_r.append(r)
                 if done:
-                    self.env_steps = 0
+                    self.train_ep_r.append(sum(self.train_r))
+                    self.train_r = []
+                if done or (self.env_steps % self.ppo_horizon == 0):
+                    l, e = self.model.train_net()
+                    self.losses.append(l)
+                    self.entropy.extend(e)
 
-        if self.trainning and (self.total_steps/self.frames_per_update) % 20_000 == 0:
-            log = f"{self.task} Train [{self.total_steps/self.frames_per_update/1_000_000.:.2f}M] |"+\
-                f"Loss {sum(self.losses)/len(self.losses):.4f}"+\
-                f" | Entropy: {sum(self.entropy)/len(self.entropy):.4f}" +\
-                f" | Reward {sum(self.train_ep_r)/len(self.train_ep_r):.1f}"
+            if done:
+                self.env_steps = 0
+
+        if self.trainning and self.total_steps % 2_000 == 0:
+            log = (
+                f"PPO | {self.task} Train [{self.total_steps/1_000_000.:.3f}M] |"
+                + f"Loss: {sum(self.losses)/len(self.losses):.4f}"
+                + f" | Entropy: {sum(self.entropy)/len(self.entropy):.4f}"
+                + f" | Reward: {sum(self.train_ep_r)/len(self.train_ep_r):.1f}"
+            )
             print(log)
-            with open("terminal_ppo.txt", "a") as f:
+            with open("train_ppo.txt", "a") as f:
                 f.write(log + "\n")
             self.train_ep_r = []
             self.losses = []
@@ -163,11 +133,11 @@ class PPOAgent(tella.ContinualRLAgent):
 
     def task_variant_end(self, task_name, variant_name):
         if not self.trainning:
-            frames = self.test_video[task_name]
-            out = cv2.VideoWriter(f"outputPPO_{task_name}.mp4", cv2.VideoWriter_fourcc(*'mp4v'), 10, (160,250))
-            for frame in frames:
-                out.write(frame)
-            out.release()
+            with open("eval_ppo.txt", "a") as f:
+                f.write(
+                    f"PPO | {self.task} - {self.curr_task} | {sum(self.test_ep_r)/len(self.test_ep_r):.2f}\n"
+                )
+            self.test_ep_r = []
 
     def task_end(self, task_name):
         pass
@@ -177,10 +147,9 @@ class PPOAgent(tella.ContinualRLAgent):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
     tella.rl_experiment(
         PPOAgent,
-        SimpleAtariSequenceCurriculumPPO,
+        LunarCurriculumPPO,
         num_lifetimes=1,
         num_parallel_envs=1,
         log_dir="./logs/ppo",
