@@ -12,4 +12,6 @@ RUN cd tella && pip install -e ".[dev]" && pip install numpy==1.21.4
 
 COPY project/ ./project
 
+COPY plot.py .
+
 COPY exec.sh .
